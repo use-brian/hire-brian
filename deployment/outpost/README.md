@@ -32,6 +32,7 @@ The installer asks for:
 - Primary model provider and its required API key or cloud project.
 - Optional headless LibreOffice for PDF output.
 - Optional Chromium/Xfce virtual desktop with Xvfb and localhost-only VNC.
+- Independent enable/disable choices for Discord, WhatsApp, WeChat, and Feishu connectors.
 - The SSH port UFW must preserve.
 
 It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt.
@@ -48,11 +49,11 @@ At the end, choose `default` reverse proxy setup to install Caddy, configure app
 | `use-brian-outpost-auth` | 3005 | Authentication portal |
 | `use-brian-outpost-app` | 3003 | Product web app |
 | `use-brian-outpost-doc-sync` | 8080 | Collaborative document sync |
-| `use-brian-outpost-discord` | 8090 | Discord connector |
-| `use-brian-outpost-whatsapp` | 8091 | WhatsApp connector |
+| `use-brian-outpost-discord` | 8090 | Optional Discord connector |
+| `use-brian-outpost-whatsapp` | 8091 | Optional WhatsApp connector |
 | `use-brian-outpost-browser-relay` | 8092 | Browser relay |
-| `use-brian-outpost-wechat` | 8093 | WeChat connector |
-| `use-brian-outpost-feishu` | 8095 | Feishu connector |
+| `use-brian-outpost-wechat` | 8093 | Optional WeChat connector |
+| `use-brian-outpost-feishu` | 8095 | Optional Feishu connector |
 | `use-brian-outpost-browser-desktop` | 5901 localhost | Optional Chromium virtual desktop |
 
 Every unit runs under the configured unprivileged service account with systemd filesystem protections, memory limits, automatic restart, per-service environment files, and journald logging. Releases, files, browser profiles, and build state are owned by that account.
@@ -85,6 +86,6 @@ sudo outpost-doctor
 sudo journalctl -u use-brian-outpost-api -f
 ```
 
-`outpost-update [source-directory]` stages a new release, performs a frozen install and filtered production build, stops writers, runs open and Outpost migrations, atomically switches the release symlink, starts the API through a readiness gate, starts dependent services, and runs health checks. Failed health checks restore the previous code release when available. Database migrations are forward-only and are not rolled back.
+`outpost-update [source-directory]` stages a new release, performs a frozen install and filtered production build, stops writers, runs open and Outpost migrations, atomically switches the release symlink, starts enabled services, and runs health checks. Disabled connectors are excluded from service lifecycle and diagnostics.
 
 Back up PostgreSQL and `/var/lib/use-brian-outpost/files` before updates. Application listeners remain behind UFW; provide a TLS reverse proxy or outbound tunnel with WebSocket support.

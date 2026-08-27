@@ -11,11 +11,11 @@ Supported architectures are amd64 and arm64. The installer verifies systemd, Nod
 | `brian-api` | `4000` | API and in-process workers |
 | `brian-app-web` | `3003` | Next.js application |
 | `brian-doc-sync` | `8080` | Collaborative document WebSocket service |
-| `brian-discord-connector` | `8090` | Discord gateway connector |
-| `brian-wa-connector` | `8091` | WhatsApp connector |
+| `brian-discord-connector` | `8090` | Optional Discord gateway connector |
+| `brian-wa-connector` | `8091` | Optional WhatsApp connector |
 | `brian-browser-relay` | `8092` | Browser extension relay |
-| `brian-wechat-connector` | `8093` | WeChat connector |
-| `brian-feishu-connector` | `8095` | Feishu connector |
+| `brian-wechat-connector` | `8093` | Optional WeChat connector |
+| `brian-feishu-connector` | `8095` | Optional Feishu connector |
 | `brian-browser-desktop` | `5901` localhost | Optional Chromium/Xfce virtual desktop |
 
 PostgreSQL may be installed locally or supplied externally. Production requires two connections: an owner URL for migrations and system operations (`DATABASE_URL`) and a non-owner, non-`BYPASSRLS` application-role URL (`DATABASE_URL_APP`).
@@ -46,6 +46,8 @@ sudo env \
 When `INSTALL_POSTGRES=no`, also set `DATABASE_URL` and `DATABASE_URL_APP`. The external database administrator must create pgvector and `pg_trgm`, and the application URL's role must already have the required schema/table/sequence/function privileges while remaining `NOBYPASSRLS`. Optional values include `BRIAN_REPO`, `BRIAN_REF`, `COOKIE_DOMAIN`, and `VNC_PASSWORD`.
 
 The installer asks for a primary model provider. Choose `gemini` to enter an API key, `dashscope` to enter an API key and optional base URL, `vertex` to enter a Google Cloud project/location, or `openai-codex` to complete interactive account sign-in after installation.
+
+Discord, WhatsApp, WeChat, and Feishu are independently optional. A disabled connector is not configured in the API, enabled in systemd, restarted during updates, or checked by `brian-doctor`.
 
 At the end, choose `default` reverse proxy setup to install Caddy, configure the app/API/doc-sync hostnames, enable automatic TLS and WebSockets, and allow host ports 80/443. Choose `custom` to leave ingress unchanged. Cloud security-group/firewall rules and DNS still need to point ports 80/443 and the configured hostnames to this server.
 

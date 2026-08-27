@@ -32,6 +32,7 @@ configure_service_user
 ask INSTALL_POSTGRES "Install PostgreSQL 18 and pgvector locally? (yes/no)" yes
 ask INSTALL_BROWSER "Install Chromium, Xfce, Xvfb, and local-only VNC? (yes/no)" no
 ask INSTALL_LIBREOFFICE "Install headless LibreOffice for PDF exports? (yes/no)" yes
+configure_connectors
 ask BRIAN_REPO "Use Brian repository" "https://github.com/use-brian/use-brian.git"
 ask BRIAN_REF "Git branch, tag, or commit" main
 ask APP_URL "Public HTTPS application URL"
@@ -124,11 +125,11 @@ fi
 JWT_SECRET=${JWT_SECRET:-$(random_secret)}
 DOC_SYNC_SECRET=${DOC_SYNC_SECRET:-$(random_secret)}
 CHANNEL_CREDENTIAL_KEY=${CHANNEL_CREDENTIAL_KEY:-$(openssl rand -base64 32 | tr -d '\n')}
-DISCORD_CONNECTOR_SECRET=${DISCORD_CONNECTOR_SECRET:-$(random_secret)}
-WA_CONNECTOR_SECRET=${WA_CONNECTOR_SECRET:-$(random_secret)}
+if [ "$ENABLE_DISCORD" = yes ]; then DISCORD_CONNECTOR_SECRET=${DISCORD_CONNECTOR_SECRET:-$(random_secret)}; fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then WA_CONNECTOR_SECRET=${WA_CONNECTOR_SECRET:-$(random_secret)}; fi
 BROWSER_RELAY_SECRET=${BROWSER_RELAY_SECRET:-$(random_secret)}
-WECHAT_CONNECTOR_SECRET=${WECHAT_CONNECTOR_SECRET:-$(random_secret)}
-FEISHU_CONNECTOR_SECRET=${FEISHU_CONNECTOR_SECRET:-$(random_secret)}
+if [ "$ENABLE_WECHAT" = yes ]; then WECHAT_CONNECTOR_SECRET=${WECHAT_CONNECTOR_SECRET:-$(random_secret)}; fi
+if [ "$ENABLE_FEISHU" = yes ]; then FEISHU_CONNECTOR_SECRET=${FEISHU_CONNECTOR_SECRET:-$(random_secret)}; fi
 BROWSER_VAULT_ENCRYPTION_KEY=${BROWSER_VAULT_ENCRYPTION_KEY:-$(openssl rand -base64 32 | tr -d '\n')}
 BROWSER_CREDENTIAL_ENCRYPTION_KEY=${BROWSER_CREDENTIAL_ENCRYPTION_KEY:-$(openssl rand -base64 32 | tr -d '\n')}
 LLM_PROVIDER_KEY_ENCRYPTION_KEY=${LLM_PROVIDER_KEY_ENCRYPTION_KEY:-$(openssl rand -base64 32 | tr -d '\n')}
@@ -152,16 +153,12 @@ LLM_PROVIDER_KEY_ENCRYPTION_KEY=${LLM_PROVIDER_KEY_ENCRYPTION_KEY:-$(openssl ran
   write_env JWT_SECRET "$JWT_SECRET"
   write_env DOC_SYNC_SECRET "$DOC_SYNC_SECRET"
   write_env CHANNEL_CREDENTIAL_KEY "$CHANNEL_CREDENTIAL_KEY"
-  write_env DISCORD_CONNECTOR_URL http://127.0.0.1:8090
-  write_env DISCORD_CONNECTOR_SECRET "$DISCORD_CONNECTOR_SECRET"
-  write_env WA_CONNECTOR_URL http://127.0.0.1:8091
-  write_env WA_CONNECTOR_SECRET "$WA_CONNECTOR_SECRET"
+  if [ "$ENABLE_DISCORD" = yes ]; then write_env DISCORD_CONNECTOR_URL http://127.0.0.1:8090; write_env DISCORD_CONNECTOR_SECRET "$DISCORD_CONNECTOR_SECRET"; fi
+  if [ "$ENABLE_WHATSAPP" = yes ]; then write_env WA_CONNECTOR_URL http://127.0.0.1:8091; write_env WA_CONNECTOR_SECRET "$WA_CONNECTOR_SECRET"; fi
   write_env BROWSER_RELAY_URL http://127.0.0.1:8092
   write_env BROWSER_RELAY_SECRET "$BROWSER_RELAY_SECRET"
-  write_env WECHAT_CONNECTOR_URL http://127.0.0.1:8093
-  write_env WECHAT_CONNECTOR_SECRET "$WECHAT_CONNECTOR_SECRET"
-  write_env FEISHU_CONNECTOR_URL http://127.0.0.1:8095
-  write_env FEISHU_CONNECTOR_SECRET "$FEISHU_CONNECTOR_SECRET"
+  if [ "$ENABLE_WECHAT" = yes ]; then write_env WECHAT_CONNECTOR_URL http://127.0.0.1:8093; write_env WECHAT_CONNECTOR_SECRET "$WECHAT_CONNECTOR_SECRET"; fi
+  if [ "$ENABLE_FEISHU" = yes ]; then write_env FEISHU_CONNECTOR_URL http://127.0.0.1:8095; write_env FEISHU_CONNECTOR_SECRET "$FEISHU_CONNECTOR_SECRET"; fi
   write_env BROWSER_VAULT_ENCRYPTION_KEY "$BROWSER_VAULT_ENCRYPTION_KEY"
   write_env BROWSER_CREDENTIAL_ENCRYPTION_KEY "$BROWSER_CREDENTIAL_ENCRYPTION_KEY"
   write_env LLM_PROVIDER_KEY_ENCRYPTION_KEY "$LLM_PROVIDER_KEY_ENCRYPTION_KEY"
@@ -178,6 +175,8 @@ chmod 0640 /etc/brian/brian.env
   printf 'LOCAL_POSTGRES=%q\n' "$(is_yes "$INSTALL_POSTGRES" && printf yes || printf no)"
   printf 'BRIAN_USER=%q\n' "$BRIAN_USER"
   printf 'BRIAN_GROUP=%q\n' "$BRIAN_GROUP"
+  printf 'ENABLE_DISCORD=%q\n' "$ENABLE_DISCORD"; printf 'ENABLE_WHATSAPP=%q\n' "$ENABLE_WHATSAPP"
+  printf 'ENABLE_WECHAT=%q\n' "$ENABLE_WECHAT"; printf 'ENABLE_FEISHU=%q\n' "$ENABLE_FEISHU"
 } > /etc/brian/deploy.conf
 chmod 0600 /etc/brian/deploy.conf
 
@@ -206,7 +205,12 @@ if is_yes "$INSTALL_BROWSER"; then
 fi
 
 systemctl daemon-reload
-systemctl enable brian-api brian-app-web brian-doc-sync brian-discord-connector brian-wa-connector brian-browser-relay brian-wechat-connector brian-feishu-connector
+oss_units=(brian-api brian-app-web brian-doc-sync brian-browser-relay)
+if [ "$ENABLE_DISCORD" = yes ]; then oss_units+=(brian-discord-connector); fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then oss_units+=(brian-wa-connector); fi
+if [ "$ENABLE_WECHAT" = yes ]; then oss_units+=(brian-wechat-connector); fi
+if [ "$ENABLE_FEISHU" = yes ]; then oss_units+=(brian-feishu-connector); fi
+systemctl enable "${oss_units[@]}"
 if is_yes "$INSTALL_BROWSER"; then systemctl enable brian-browser-desktop.service; fi
 
 echo ">> Building, migrating, and starting Brian (this can take several minutes)"

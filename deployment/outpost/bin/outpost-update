@@ -25,12 +25,12 @@ units=(
   use-brian-outpost-auth
   use-brian-outpost-app
   use-brian-outpost-doc-sync
-  use-brian-outpost-discord
-  use-brian-outpost-whatsapp
   use-brian-outpost-browser-relay
-  use-brian-outpost-wechat
-  use-brian-outpost-feishu
 )
+if [ "$ENABLE_DISCORD" = yes ]; then units+=(use-brian-outpost-discord); fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then units+=(use-brian-outpost-whatsapp); fi
+if [ "$ENABLE_WECHAT" = yes ]; then units+=(use-brian-outpost-wechat); fi
+if [ "$ENABLE_FEISHU" = yes ]; then units+=(use-brian-outpost-feishu); fi
 if [ -e /etc/use-brian-outpost/browser-desktop ]; then units+=(use-brian-outpost-browser-desktop); fi
 
 echo ">> Staging source into $release"

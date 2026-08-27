@@ -63,6 +63,26 @@ configure_service_user() {
   BRIAN_GROUP=$BRIAN_USER
 }
 
+normalize_yes_no() {
+  local variable=$1 value=${!1}
+  case "$value" in
+    y|Y|yes|YES|true|1) printf -v "$variable" '%s' yes ;;
+    n|N|no|NO|false|0) printf -v "$variable" '%s' no ;;
+    *) echo "$variable must be yes or no." >&2; exit 1 ;;
+  esac
+}
+
+configure_connectors() {
+  ask ENABLE_DISCORD "Enable Discord connector? (yes/no)" yes
+  ask ENABLE_WHATSAPP "Enable WhatsApp connector? (yes/no)" yes
+  ask ENABLE_WECHAT "Enable WeChat connector? (yes/no)" yes
+  ask ENABLE_FEISHU "Enable Feishu connector? (yes/no)" yes
+  normalize_yes_no ENABLE_DISCORD
+  normalize_yes_no ENABLE_WHATSAPP
+  normalize_yes_no ENABLE_WECHAT
+  normalize_yes_no ENABLE_FEISHU
+}
+
 install_systemd_unit() {
   local source=$1 destination=$2 content
   content=$(<"$source")

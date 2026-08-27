@@ -9,7 +9,11 @@ ref=${1:-$BRIAN_REF}
 platform=/var/lib/brian/platform
 releases=/var/lib/brian/releases
 release="$releases/$(date -u +%Y%m%dT%H%M%SZ)-$(date +%N)"
-units=(brian-app-web brian-doc-sync brian-discord-connector brian-wa-connector brian-browser-relay brian-wechat-connector brian-feishu-connector)
+units=(brian-app-web brian-doc-sync brian-browser-relay)
+if [ "$ENABLE_DISCORD" = yes ]; then units+=(brian-discord-connector); fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then units+=(brian-wa-connector); fi
+if [ "$ENABLE_WECHAT" = yes ]; then units+=(brian-wechat-connector); fi
+if [ "$ENABLE_FEISHU" = yes ]; then units+=(brian-feishu-connector); fi
 
 echo ">> Fetching $BRIAN_REPO at $ref"
 install -d -o "$BRIAN_USER" -g "$BRIAN_GROUP" -m 0750 "$releases"

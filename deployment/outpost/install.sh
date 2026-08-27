@@ -24,10 +24,7 @@ configure_service_user
 ask OUTPOST_SOURCE_DIR "Absolute path to the supplied Outpost source tree"
 OUTPOST_SOURCE_DIR=$(readlink -f "$OUTPOST_SOURCE_DIR")
 for marker in package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json apps/api/package.json \
-  apps/auth-web/package.json apps/app-web/package.json apps/doc-sync/package.json \
-  apps/discord-connector/package.json apps/wa-connector/package.json \
-  apps/browser-relay/package.json apps/wechat-connector/package.json \
-  apps/browser-extension/package.json apps/feishu-connector/package.json packages/api/migrations; do
+  apps/auth-web/package.json apps/app-web/package.json apps/doc-sync/package.json packages/api/migrations; do
   [ -e "$OUTPOST_SOURCE_DIR/$marker" ] || { echo "Source tree is missing $marker." >&2; exit 1; }
 done
 detected_ssh_port=22
@@ -36,6 +33,7 @@ ask SSH_PORT "SSH server port to preserve in UFW" "$detected_ssh_port"
 ask INSTALL_POSTGRES "Install PostgreSQL 18 and pgvector locally? (yes/no)" yes
 ask INSTALL_LIBREOFFICE "Install headless LibreOffice for PDF exports? (yes/no)" yes
 ask INSTALL_BROWSER "Install Chromium, Xfce, Xvfb, and local-only VNC? (yes/no)" no
+configure_connectors
 ask APP_URL "Public HTTPS application origin"
 ask API_URL "Public HTTPS API origin"
 ask AUTH_PORTAL_URL "Public HTTPS authentication origin"
@@ -133,11 +131,11 @@ fi
 JWT_SECRET=${JWT_SECRET:-$(random_secret)}
 DOC_SYNC_SECRET=${DOC_SYNC_SECRET:-$(random_secret)}
 CHANNEL_CREDENTIAL_KEY=${CHANNEL_CREDENTIAL_KEY:-$(openssl rand -base64 32 | tr -d '\n')}
-DISCORD_CONNECTOR_SECRET=${DISCORD_CONNECTOR_SECRET:-$(random_secret)}
-WA_CONNECTOR_SECRET=${WA_CONNECTOR_SECRET:-$(random_secret)}
+if [ "$ENABLE_DISCORD" = yes ]; then DISCORD_CONNECTOR_SECRET=${DISCORD_CONNECTOR_SECRET:-$(random_secret)}; fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then WA_CONNECTOR_SECRET=${WA_CONNECTOR_SECRET:-$(random_secret)}; fi
 BROWSER_RELAY_SECRET=${BROWSER_RELAY_SECRET:-$(random_secret)}
-WECHAT_CONNECTOR_SECRET=${WECHAT_CONNECTOR_SECRET:-$(random_secret)}
-FEISHU_CONNECTOR_SECRET=${FEISHU_CONNECTOR_SECRET:-$(random_secret)}
+if [ "$ENABLE_WECHAT" = yes ]; then WECHAT_CONNECTOR_SECRET=${WECHAT_CONNECTOR_SECRET:-$(random_secret)}; fi
+if [ "$ENABLE_FEISHU" = yes ]; then FEISHU_CONNECTOR_SECRET=${FEISHU_CONNECTOR_SECRET:-$(random_secret)}; fi
 BROWSER_VAULT_ENCRYPTION_KEY=${BROWSER_VAULT_ENCRYPTION_KEY:-$(openssl rand -base64 32 | tr -d '\n')}
 BROWSER_CREDENTIAL_ENCRYPTION_KEY=${BROWSER_CREDENTIAL_ENCRYPTION_KEY:-$(openssl rand -base64 32 | tr -d '\n')}
 LLM_PROVIDER_KEY_ENCRYPTION_KEY=${LLM_PROVIDER_KEY_ENCRYPTION_KEY:-$(openssl rand -base64 32 | tr -d '\n')}
@@ -150,11 +148,11 @@ LLM_PROVIDER_KEY_ENCRYPTION_KEY=${LLM_PROVIDER_KEY_ENCRYPTION_KEY:-$(openssl ran
   write_env AUTH_PORTAL_URL "$AUTH_PORTAL_URL"; write_env COOKIE_DOMAIN "$COOKIE_DOMAIN"; write_env TRUST_PROXY_HEADERS "$TRUST_PROXY_HEADERS"
   write_env DOC_SYNC_URL http://127.0.0.1:8080; write_env JWT_SECRET "$JWT_SECRET"; write_env DOC_SYNC_SECRET "$DOC_SYNC_SECRET"
   write_env CHANNEL_CREDENTIAL_KEY "$CHANNEL_CREDENTIAL_KEY"
-  write_env DISCORD_CONNECTOR_URL http://127.0.0.1:8090; write_env DISCORD_CONNECTOR_SECRET "$DISCORD_CONNECTOR_SECRET"
-  write_env WA_CONNECTOR_URL http://127.0.0.1:8091; write_env WA_CONNECTOR_SECRET "$WA_CONNECTOR_SECRET"
+  if [ "$ENABLE_DISCORD" = yes ]; then write_env DISCORD_CONNECTOR_URL http://127.0.0.1:8090; write_env DISCORD_CONNECTOR_SECRET "$DISCORD_CONNECTOR_SECRET"; fi
+  if [ "$ENABLE_WHATSAPP" = yes ]; then write_env WA_CONNECTOR_URL http://127.0.0.1:8091; write_env WA_CONNECTOR_SECRET "$WA_CONNECTOR_SECRET"; fi
   write_env BROWSER_RELAY_URL http://127.0.0.1:8092; write_env BROWSER_RELAY_SECRET "$BROWSER_RELAY_SECRET"
-  write_env WECHAT_CONNECTOR_URL http://127.0.0.1:8093; write_env WECHAT_CONNECTOR_SECRET "$WECHAT_CONNECTOR_SECRET"
-  write_env FEISHU_CONNECTOR_URL http://127.0.0.1:8095; write_env FEISHU_CONNECTOR_SECRET "$FEISHU_CONNECTOR_SECRET"
+  if [ "$ENABLE_WECHAT" = yes ]; then write_env WECHAT_CONNECTOR_URL http://127.0.0.1:8093; write_env WECHAT_CONNECTOR_SECRET "$WECHAT_CONNECTOR_SECRET"; fi
+  if [ "$ENABLE_FEISHU" = yes ]; then write_env FEISHU_CONNECTOR_URL http://127.0.0.1:8095; write_env FEISHU_CONNECTOR_SECRET "$FEISHU_CONNECTOR_SECRET"; fi
   write_env BROWSER_VAULT_ENCRYPTION_KEY "$BROWSER_VAULT_ENCRYPTION_KEY"; write_env BROWSER_CREDENTIAL_ENCRYPTION_KEY "$BROWSER_CREDENTIAL_ENCRYPTION_KEY"
   write_env LLM_PROVIDER_KEY_ENCRYPTION_KEY "$LLM_PROVIDER_KEY_ENCRYPTION_KEY"; write_env LOCAL_FILES_DIR /var/lib/use-brian-outpost/files
   write_env OUTPOST_AUTH_EMAIL_ENABLED "$OUTPOST_AUTH_EMAIL_ENABLED"; write_env OUTPOST_AUTH_OIDC_ENABLED "$OUTPOST_AUTH_OIDC_ENABLED"
@@ -181,11 +179,11 @@ LLM_PROVIDER_KEY_ENCRYPTION_KEY=${LLM_PROVIDER_KEY_ENCRYPTION_KEY:-$(openssl ran
   write_env NEXT_PUBLIC_PRIMARY_AUTH_URL "$AUTH_PORTAL_URL"; write_env NEXT_PUBLIC_API_URL "$API_URL"; write_env NEXT_PUBLIC_DOC_SYNC_URL "$DOC_SYNC_PUBLIC_URL"; write_env COOKIE_DOMAIN "$COOKIE_DOMAIN"
 } > /etc/use-brian-outpost/app.env
 { write_env NODE_ENV production; write_env DATABASE_URL "$DATABASE_URL"; write_env DATABASE_URL_APP "$DATABASE_URL_APP"; write_env JWT_SECRET "$JWT_SECRET"; write_env DOC_SYNC_SECRET "$DOC_SYNC_SECRET"; } > /etc/use-brian-outpost/doc-sync.env
-{ write_env NODE_ENV production; write_env DISCORD_CONNECTOR_SECRET "$DISCORD_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/discord.env
-{ write_env NODE_ENV production; write_env DATABASE_URL "$DATABASE_URL"; write_env DATABASE_URL_APP "$DATABASE_URL_APP"; write_env WA_CONNECTOR_SECRET "$WA_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/whatsapp.env
+if [ "$ENABLE_DISCORD" = yes ]; then { write_env NODE_ENV production; write_env DISCORD_CONNECTOR_SECRET "$DISCORD_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/discord.env; fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then { write_env NODE_ENV production; write_env DATABASE_URL "$DATABASE_URL"; write_env DATABASE_URL_APP "$DATABASE_URL_APP"; write_env WA_CONNECTOR_SECRET "$WA_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/whatsapp.env; fi
 { write_env NODE_ENV production; write_env JWT_SECRET "$JWT_SECRET"; write_env BROWSER_RELAY_SECRET "$BROWSER_RELAY_SECRET"; } > /etc/use-brian-outpost/browser-relay.env
-{ write_env NODE_ENV production; write_env WECHAT_CONNECTOR_SECRET "$WECHAT_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/wechat.env
-{ write_env NODE_ENV production; write_env FEISHU_CONNECTOR_SECRET "$FEISHU_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/feishu.env
+if [ "$ENABLE_WECHAT" = yes ]; then { write_env NODE_ENV production; write_env WECHAT_CONNECTOR_SECRET "$WECHAT_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/wechat.env; fi
+if [ "$ENABLE_FEISHU" = yes ]; then { write_env NODE_ENV production; write_env FEISHU_CONNECTOR_SECRET "$FEISHU_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/feishu.env; fi
 { write_env NODE_ENV production; write_env USEBRIAN_EDITION outpost; write_env DATABASE_URL "$DATABASE_URL"; } > /etc/use-brian-outpost/migrate.env
 chown "root:$BRIAN_GROUP" /etc/use-brian-outpost/*.env; chmod 0640 /etc/use-brian-outpost/*.env
 
@@ -194,6 +192,8 @@ chown "root:$BRIAN_GROUP" /etc/use-brian-outpost/*.env; chmod 0640 /etc/use-bria
   printf 'APP_URL=%q\n' "$APP_URL"; printf 'API_URL=%q\n' "$API_URL"; printf 'AUTH_PORTAL_URL=%q\n' "$AUTH_PORTAL_URL"
   printf 'DOC_SYNC_PUBLIC_URL=%q\n' "$DOC_SYNC_PUBLIC_URL"; printf 'LOCAL_POSTGRES=%q\n' "$LOCAL_POSTGRES"
   printf 'BRIAN_USER=%q\n' "$BRIAN_USER"; printf 'BRIAN_GROUP=%q\n' "$BRIAN_GROUP"
+  printf 'ENABLE_DISCORD=%q\n' "$ENABLE_DISCORD"; printf 'ENABLE_WHATSAPP=%q\n' "$ENABLE_WHATSAPP"
+  printf 'ENABLE_WECHAT=%q\n' "$ENABLE_WECHAT"; printf 'ENABLE_FEISHU=%q\n' "$ENABLE_FEISHU"
 } > /etc/use-brian-outpost/deploy.conf
 chmod 0600 /etc/use-brian-outpost/deploy.conf
 
@@ -219,7 +219,12 @@ for unit_path in "$HERE/systemd/"use-brian-outpost-*.service; do
   install_systemd_unit "$unit_path" "/etc/systemd/system/$unit"
 done
 systemctl daemon-reload
-systemctl enable use-brian-outpost-{api,auth,app,doc-sync,discord,whatsapp,browser-relay,wechat,feishu}.service
+outpost_units=(use-brian-outpost-{api,auth,app,doc-sync,browser-relay}.service)
+if [ "$ENABLE_DISCORD" = yes ]; then outpost_units+=(use-brian-outpost-discord.service); fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then outpost_units+=(use-brian-outpost-whatsapp.service); fi
+if [ "$ENABLE_WECHAT" = yes ]; then outpost_units+=(use-brian-outpost-wechat.service); fi
+if [ "$ENABLE_FEISHU" = yes ]; then outpost_units+=(use-brian-outpost-feishu.service); fi
+systemctl enable "${outpost_units[@]}"
 if is_yes "$INSTALL_BROWSER"; then systemctl enable use-brian-outpost-browser-desktop.service; fi
 
 ufw allow "$SSH_PORT/tcp"; ufw default deny incoming; ufw default allow outgoing; ufw --force enable

@@ -2,6 +2,7 @@
 set -u
 
 failed=0
+. /etc/brian/deploy.conf
 check_url() {
   local name=$1 url=$2
   if curl --max-time 2 --fail --silent --show-error --output /dev/null "$url"; then
@@ -12,7 +13,12 @@ check_url() {
   fi
 }
 
-for unit in brian-api brian-app-web brian-doc-sync brian-discord-connector brian-wa-connector brian-browser-relay brian-wechat-connector brian-feishu-connector; do
+units=(brian-api brian-app-web brian-doc-sync brian-browser-relay)
+if [ "$ENABLE_DISCORD" = yes ]; then units+=(brian-discord-connector); fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then units+=(brian-wa-connector); fi
+if [ "$ENABLE_WECHAT" = yes ]; then units+=(brian-wechat-connector); fi
+if [ "$ENABLE_FEISHU" = yes ]; then units+=(brian-feishu-connector); fi
+for unit in "${units[@]}"; do
   if systemctl is-active --quiet "$unit"; then
     printf '%-24s active\n' "$unit"
   else
@@ -24,9 +30,9 @@ done
 check_url api http://127.0.0.1:4000/health
 check_url app-web http://127.0.0.1:3003/
 check_url doc-sync http://127.0.0.1:8080/health
-check_url discord-connector http://127.0.0.1:8090/health
-check_url whatsapp-connector http://127.0.0.1:8091/health
+if [ "$ENABLE_DISCORD" = yes ]; then check_url discord-connector http://127.0.0.1:8090/health; fi
+if [ "$ENABLE_WHATSAPP" = yes ]; then check_url whatsapp-connector http://127.0.0.1:8091/health; fi
 check_url browser-relay http://127.0.0.1:8092/health
-check_url wechat-connector http://127.0.0.1:8093/health
-check_url feishu-connector http://127.0.0.1:8095/health
+if [ "$ENABLE_WECHAT" = yes ]; then check_url wechat-connector http://127.0.0.1:8093/health; fi
+if [ "$ENABLE_FEISHU" = yes ]; then check_url feishu-connector http://127.0.0.1:8095/health; fi
 exit "$failed"
