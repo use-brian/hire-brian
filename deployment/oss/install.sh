@@ -183,7 +183,9 @@ chmod 0600 /etc/brian/deploy.conf
 echo ">> Installing service definitions and operations commands"
 install -m 0755 "$HERE/bin/brian-update" /usr/local/bin/brian-update
 install -m 0755 "$HERE/bin/brian-doctor" /usr/local/bin/brian-doctor
+install -m 0755 "$HERE/bin/brian-connectors" /usr/local/bin/brian-connectors
 install -d -m 0755 /usr/local/lib/brian
+install -m 0755 "$HERE/../connector-admin.sh" /usr/local/lib/brian/connector-admin
 install -m 0755 "$HERE/bin/grant-app-role" /usr/local/lib/brian/grant-app-role
 install -m 0755 "$HERE/bin/wait-for-api" /usr/local/lib/brian/wait-for-api
 for unit in brian-{api,app-web,doc-sync,discord-connector,wa-connector,browser-relay,wechat-connector,feishu-connector}.service; do

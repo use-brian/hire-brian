@@ -212,6 +212,7 @@ chown "root:$BRIAN_GROUP" /etc/use-brian-outpost/*.env; chmod 0640 /etc/use-bria
 chmod 0600 /etc/use-brian-outpost/deploy.conf
 
 install -d -m 0755 /usr/local/lib/use-brian-outpost
+install -m 0755 "$HERE/../connector-admin.sh" /usr/local/lib/use-brian-outpost/connector-admin
 install -m 0755 "$HERE/bin/outpost-grant-role" /usr/local/lib/use-brian-outpost/grant-role
 install -m 0755 "$HERE/bin/wait-for-api" /usr/local/lib/use-brian-outpost/wait-for-api
 if is_yes "$INSTALL_BROWSER"; then
@@ -227,6 +228,7 @@ if is_yes "$INSTALL_BROWSER"; then
   chmod 0600 /etc/use-brian-outpost/browser-desktop
 fi
 install -m 0755 "$HERE/bin/outpost-doctor" /usr/local/bin/outpost-doctor
+install -m 0755 "$HERE/bin/outpost-connectors" /usr/local/bin/outpost-connectors
 install -m 0755 "$HERE/bin/outpost-update" /usr/local/bin/outpost-update
 for unit_path in "$HERE/systemd/"use-brian-outpost-*.service; do
   unit=${unit_path##*/}

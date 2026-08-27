@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ "$(id -u)" -eq 0 ] || { echo "Run brian-connectors as root." >&2; exit 1; }
+. /usr/local/lib/brian/connector-admin
+config=/etc/brian/deploy.conf
+api_env=/etc/brian/brian.env
+
+describe_connector() {
+  case "$1" in
+    discord) URL_KEY=DISCORD_CONNECTOR_URL; SECRET_KEY=DISCORD_CONNECTOR_SECRET; URL=http://127.0.0.1:8090; UNIT=brian-discord-connector ;;
+    whatsapp) URL_KEY=WA_CONNECTOR_URL; SECRET_KEY=WA_CONNECTOR_SECRET; URL=http://127.0.0.1:8091; UNIT=brian-wa-connector ;;
+    wechat) URL_KEY=WECHAT_CONNECTOR_URL; SECRET_KEY=WECHAT_CONNECTOR_SECRET; URL=http://127.0.0.1:8093; UNIT=brian-wechat-connector ;;
+    feishu) URL_KEY=FEISHU_CONNECTOR_URL; SECRET_KEY=FEISHU_CONNECTOR_SECRET; URL=http://127.0.0.1:8095; UNIT=brian-feishu-connector ;;
+    *) connector_variable "$1" >/dev/null; exit 1 ;;
+  esac
+}
+
+action=${1:-status}
+if [ "$action" = status ]; then
+  . "$config"
+  for connector in discord whatsapp wechat feishu; do
+    variable=$(connector_variable "$connector")
+    state=${!variable}
+    unit_state=$(systemctl is-active "brian-${connector/whatsapp/wa}-connector.service" 2>/dev/null || true)
+    printf '%-10s configured=%-3s service=%s\n' "$connector" "$state" "$unit_state"
+  done
+  exit 0
+fi
+
+[ "$action" = enable ] || [ "$action" = disable ] || { echo "Usage: brian-connectors status|enable|disable <connector>" >&2; exit 1; }
+connector=${2:-}
+variable=$(connector_variable "$connector")
+describe_connector "$connector"
+
+if [ "$action" = enable ]; then
+  secret=$(new_connector_secret)
+  upsert_env_value "$api_env" "$URL_KEY" "$URL"
+  upsert_env_value "$api_env" "$SECRET_KEY" "$secret"
+  upsert_env_value "$config" "$variable" yes
+  systemctl enable "$UNIT.service"
+  systemctl restart brian-api.service
+  /usr/local/lib/brian/wait-for-api
+  systemctl restart "$UNIT.service"
+  echo "$connector connector enabled."
+else
+  systemctl disable --now "$UNIT.service"
+  remove_env_values "$api_env" "$URL_KEY" "$SECRET_KEY"
+  upsert_env_value "$config" "$variable" no
+  systemctl restart brian-api.service
+  /usr/local/lib/brian/wait-for-api
+  echo "$connector connector disabled."
+fi

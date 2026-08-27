@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ "$(id -u)" -eq 0 ] || { echo "Run outpost-connectors as root." >&2; exit 1; }
+. /usr/local/lib/use-brian-outpost/connector-admin
+config=/etc/use-brian-outpost/deploy.conf
+api_env=/etc/use-brian-outpost/api.env
+. "$config"
+
+describe_connector() {
+  case "$1" in
+    discord) URL_KEY=DISCORD_CONNECTOR_URL; SECRET_KEY=DISCORD_CONNECTOR_SECRET; URL=http://127.0.0.1:8090; UNIT=use-brian-outpost-discord; SERVICE_ENV=/etc/use-brian-outpost/discord.env ;;
+    whatsapp) URL_KEY=WA_CONNECTOR_URL; SECRET_KEY=WA_CONNECTOR_SECRET; URL=http://127.0.0.1:8091; UNIT=use-brian-outpost-whatsapp; SERVICE_ENV=/etc/use-brian-outpost/whatsapp.env ;;
+    wechat) URL_KEY=WECHAT_CONNECTOR_URL; SECRET_KEY=WECHAT_CONNECTOR_SECRET; URL=http://127.0.0.1:8093; UNIT=use-brian-outpost-wechat; SERVICE_ENV=/etc/use-brian-outpost/wechat.env ;;
+    feishu) URL_KEY=FEISHU_CONNECTOR_URL; SECRET_KEY=FEISHU_CONNECTOR_SECRET; URL=http://127.0.0.1:8095; UNIT=use-brian-outpost-feishu; SERVICE_ENV=/etc/use-brian-outpost/feishu.env ;;
+    *) connector_variable "$1" >/dev/null; exit 1 ;;
+  esac
+}
+
+action=${1:-status}
+if [ "$action" = status ]; then
+  for connector in discord whatsapp wechat feishu; do
+    variable=$(connector_variable "$connector")
+    describe_connector "$connector"
+    unit_state=$(systemctl is-active "$UNIT.service" 2>/dev/null || true)
+    printf '%-10s configured=%-3s service=%s\n' "$connector" "${!variable}" "$unit_state"
+  done
+  exit 0
+fi
+
+[ "$action" = enable ] || [ "$action" = disable ] || { echo "Usage: outpost-connectors status|enable|disable <connector>" >&2; exit 1; }
+connector=${2:-}
+variable=$(connector_variable "$connector")
+describe_connector "$connector"
+
+if [ "$action" = enable ]; then
+  secret=$(new_connector_secret)
+  upsert_env_value "$api_env" "$URL_KEY" "$URL"
+  upsert_env_value "$api_env" "$SECRET_KEY" "$secret"
+  {
+    printf 'NODE_ENV=production\n'
+    if [ "$connector" = whatsapp ]; then
+      printf 'DATABASE_URL=%s\n' "$(read_env_value /etc/use-brian-outpost/doc-sync.env DATABASE_URL)"
+      printf 'DATABASE_URL_APP=%s\n' "$(read_env_value /etc/use-brian-outpost/doc-sync.env DATABASE_URL_APP)"
+    fi
+    printf '%s=%s\n' "$SECRET_KEY" "$secret"
+  } > "$SERVICE_ENV"
+  chown "root:$BRIAN_GROUP" "$SERVICE_ENV"
+  chmod 0640 "$SERVICE_ENV"
+  upsert_env_value "$config" "$variable" yes
+  systemctl enable "$UNIT.service"
+  systemctl restart use-brian-outpost-api.service
+  /usr/local/lib/use-brian-outpost/wait-for-api
+  systemctl restart "$UNIT.service"
+  echo "$connector connector enabled."
+else
+  systemctl disable --now "$UNIT.service"
+  remove_env_values "$api_env" "$URL_KEY" "$SECRET_KEY"
+  rm -f "$SERVICE_ENV"
+  upsert_env_value "$config" "$variable" no
+  systemctl restart use-brian-outpost-api.service
+  /usr/local/lib/use-brian-outpost/wait-for-api
+  echo "$connector connector disabled."
+fi
