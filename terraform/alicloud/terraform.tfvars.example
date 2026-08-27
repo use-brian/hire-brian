@@ -1,0 +1,4 @@
+region        = "cn-hongkong"
+zone_id       = "cn-hongkong-b"
+key_pair_name = "my-existing-key"
+ssh_cidr      = "203.0.113.10/32"
