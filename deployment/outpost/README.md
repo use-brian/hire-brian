@@ -4,7 +4,7 @@ This directory installs the multi-user Outpost edition directly on Debian 12 or 
 
 ## Source prerequisite
 
-By default, the installer clones the public `use-brian` repository at a configurable branch, tag, or commit. An existing source directory remains available for offline or prechecked installations. The installer validates Outpost-capable workspace manifests, builds a versioned release as the configured unprivileged service user, runs migrations, and atomically activates `/var/lib/use-brian-outpost/platform`.
+`OUTPOST_SOURCE_MODE` defaults to `repository`. It clones `BRIAN_REPO` (default `https://github.com/use-brian/use-brian.git`) and checks out `BRIAN_REF` (default `main`) as a detached branch, tag, or commit. Directory mode stages absolute `OUTPOST_SOURCE_DIR` with `rsync`.
 
 Required source-tree markers include:
 
@@ -12,8 +12,14 @@ Required source-tree markers include:
 - `apps/auth-web/package.json`
 - `apps/app-web/package.json`
 - `apps/doc-sync/package.json`
+- `apps/discord-connector/package.json`
+- `apps/wa-connector/package.json`
+- `apps/browser-relay/package.json`
+- `apps/browser-extension/package.json`
+- `apps/wechat-connector/package.json`
+- `apps/feishu-connector/package.json`
 - `packages/api/migrations/`
-- Root `package.json`, `pnpm-lock.yaml`, and workspace configuration
+- Root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and `turbo.json`
 
 ## Install
 
@@ -38,9 +44,11 @@ The installer asks for:
 
 It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt.
 
-Supported provider choices are `gemini` (API key), `dashscope` (API key plus optional base URL), `vertex` (project/location with ADC or an optional service-account JSON supplied through the environment), and `openai-codex` (interactive account sign-in after installation, no API key).
+Important defaults are `BRIAN_USER=brian`, `OUTPOST_SOURCE_MODE=repository`, `INSTALL_POSTGRES=yes`, `INSTALL_LIBREOFFICE=yes`, `INSTALL_BROWSER=no`, all four `ENABLE_*` connector values `yes`, and `REVERSE_PROXY_SETUP=default`. For noninteractive installation set `NONINTERACTIVE=1` and pass variables from `outpost.env.example` through `sudo env`; the installer does not read that file automatically.
 
-At the end, choose `default` reverse proxy setup to install Caddy, configure app/API/auth/doc-sync routing, enable automatic TLS and WebSockets, and allow host ports 80/443. Choose `custom` to leave ingress unchanged. The cloud security group and DNS remain provider-level configuration and must allow/resolve ports 80/443 to this host.
+`MODEL_PROVIDER` defaults to `gemini`. Gemini uses `GEMINI_API_KEY`; DashScope uses `DASHSCOPE_API_KEY` plus optional `DASHSCOPE_BASE_URL`; Vertex uses `VERTEX_PROJECT_ID`, `VERTEX_LOCATION` (default `asia-east2`), and optional compact `VERTEX_SERVICE_ACCOUNT_JSON`; OpenAI Codex stores the preference without a key and is authorized through the deployed Brian provider flow.
+
+`REVERSE_PROXY_SETUP=default` installs Caddy, requires distinct app/API/auth/doc-sync hostnames, enables automatic TLS/WebSockets, and opens UFW 80/443. `custom` leaves Caddy and HTTP/HTTPS UFW rules unchanged. DNS and cloud firewall rules remain operator responsibilities.
 
 ## Native services
 
@@ -59,7 +67,7 @@ At the end, choose `default` reverse proxy setup to install Caddy, configure app
 
 Every unit runs under the configured unprivileged service account with systemd filesystem protections, memory limits, automatic restart, per-service environment files, and journald logging. Releases, files, browser profiles, and build state are owned by that account.
 
-When selected, the installer builds and loads the Use Brian Chromium extension, stores the browser profile under `/var/lib/use-brian-outpost/chromium`, and binds VNC only to localhost. Connect through SSH:
+`INSTALL_BROWSER` defaults to `no`. When enabled, `VNC_PASSWORD` is generated if omitted and must be at most eight characters. The profile is stored under `/var/lib/use-brian-outpost/chromium`; connect through SSH:
 
 ```bash
 ssh -L 5901:127.0.0.1:5901 user@SERVER_IP
@@ -73,7 +81,7 @@ Production uses two PostgreSQL roles:
 - `DATABASE_URL`: owner role for migrations and system operations.
 - `DATABASE_URL_APP`: distinct `NOSUPERUSER`, `NOBYPASSRLS` role for user-scoped queries.
 
-Local setup installs PostgreSQL 18 and pgvector natively, creates both roles, and applies current/default privileges after migration. External URLs must enforce TLS and use PostgreSQL 18 with `vector` and `pg_trgm` installed.
+Local setup installs PostgreSQL 18 and pgvector, creates both roles, and grants current/default privileges. External URLs must enforce TLS with `sslmode=require`, `verify-ca`, or `verify-full`, target the same PostgreSQL 18.x database with distinct roles, and have `vector`/`pg_trgm`. The application role must be unprivileged and inherit no privileged role; the owner must be able to grant object privileges.
 
 This installer provisions a fresh Outpost database entirely from standalone `use-brian`.
 
@@ -83,10 +91,19 @@ For repository mode, update to the configured ref with:
 
 ```bash
 sudo outpost-update
+sudo outpost-update BRANCH_OR_TAG_OR_COMMIT       # repository mode
+sudo outpost-update /absolute/source/directory    # directory mode
 sudo outpost-doctor
+sudo outpost-connectors status
+sudo outpost-connectors enable discord
+sudo outpost-connectors disable whatsapp
+# Connector names: discord, whatsapp, wechat, feishu
+sudo systemctl status 'use-brian-outpost-*'
 sudo journalctl -u use-brian-outpost-api -f
 ```
 
-`outpost-update [ref-or-source-directory]` clones the configured ref or stages the configured directory, performs a frozen install and filtered production build, stops writers, runs migrations, atomically switches the release symlink, starts enabled services, and runs health checks. Disabled connectors are excluded from service lifecycle and diagnostics.
+`outpost-update [argument]` interprets its argument by persisted source mode: branch/tag/commit for repository mode or an absolute directory for directory mode. With no argument it uses persisted `BRIAN_REF` or `OUTPOST_SOURCE_DIR`. Overrides apply to one run and do not modify `deploy.conf`.
 
-Back up PostgreSQL and `/var/lib/use-brian-outpost/files` before updates. Application listeners remain behind UFW; provide a TLS reverse proxy or outbound tunnel with WebSocket support.
+Use `outpost-connectors status`, `outpost-connectors enable <connector>`, or `outpost-connectors disable <connector>`. Supported connector names are `discord`, `whatsapp`, `wechat`, and `feishu`.
+
+Back up PostgreSQL and `/var/lib/use-brian-outpost/files` before updates. Default proxy mode publishes only Caddy on 80/443; application listeners remain protected by UFW. Custom mode requires operator-managed TLS/WebSocket ingress.

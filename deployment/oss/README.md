@@ -35,59 +35,73 @@ sudo env \
   INSTALL_POSTGRES=yes \
   INSTALL_BROWSER=no \
   INSTALL_LIBREOFFICE=yes \
+  ENABLE_DISCORD=no \
+  ENABLE_WHATSAPP=no \
+  ENABLE_WECHAT=no \
+  ENABLE_FEISHU=no \
   MODEL_PROVIDER=gemini \
   GEMINI_API_KEY=replace \
   APP_URL=https://app.example.com \
   API_URL=https://api.example.com \
   DOC_SYNC_PUBLIC_URL=wss://docs.example.com \
+  REVERSE_PROXY_SETUP=default \
   ./install.sh
 ```
 
-When `INSTALL_POSTGRES=no`, also set `DATABASE_URL` and `DATABASE_URL_APP`. The external database administrator must create pgvector and `pg_trgm`, and the application URL's role must already have the required schema/table/sequence/function privileges while remaining `NOBYPASSRLS`. Optional values include `BRIAN_REPO`, `BRIAN_REF`, `COOKIE_DOMAIN`, and `VNC_PASSWORD`.
+Change individual `ENABLE_*` values as required; each defaults to `yes`. `INSTALL_BROWSER` defaults to `no`; local PostgreSQL and LibreOffice default to `yes`.
 
-The installer asks for a primary model provider. Choose `gemini` to enter an API key, `dashscope` to enter an API key and optional base URL, `vertex` to enter a Google Cloud project/location, or `openai-codex` to complete interactive account sign-in after installation.
+When `INSTALL_POSTGRES=no`, set TLS-enforcing `DATABASE_URL` and `DATABASE_URL_APP` values for the same PostgreSQL 18 database. The owner must have `vector` and `pg_trgm` installed. The application role must be distinct, `NOSUPERUSER`, `NOBYPASSRLS`, inherit no privileged role, and have required object privileges.
+
+`MODEL_PROVIDER` defaults to `gemini`. Gemini uses `GEMINI_API_KEY`; DashScope uses `DASHSCOPE_API_KEY` and optional `DASHSCOPE_BASE_URL`; Vertex uses `VERTEX_PROJECT_ID`, `VERTEX_LOCATION` (default `asia-east2`), and optional compact `VERTEX_SERVICE_ACCOUNT_JSON`; OpenAI Codex stores the preference without an API key and is authorized through the deployed Brian provider flow.
 
 Discord, WhatsApp, WeChat, and Feishu are independently optional. A disabled connector is not configured in the API, enabled in systemd, restarted during updates, or checked by `brian-doctor`.
 
-At the end, choose `default` reverse proxy setup to install Caddy, configure the app/API/doc-sync hostnames, enable automatic TLS and WebSockets, and allow host ports 80/443. Choose `custom` to leave ingress unchanged. Cloud security-group/firewall rules and DNS still need to point ports 80/443 and the configured hostnames to this server.
+`REVERSE_PROXY_SETUP` defaults to `default`: it installs Caddy, requires distinct app/API/doc-sync hostnames, enables automatic TLS/WebSockets, and opens host UFW ports 80/443. `custom` leaves ingress unchanged. DNS and cloud firewall rules remain operator responsibilities.
 
-The external database preflight requires PostgreSQL 18 or newer, both extensions, and a `NOSUPERUSER`, `NOBYPASSRLS` application role. It checks connectivity before downloading and building Brian.
+External preflight requires TLS `sslmode=require`, `verify-ca`, or `verify-full`; PostgreSQL 18.x; `vector` and `pg_trgm`; the same database with distinct roles; and an application role that is `NOSUPERUSER`, `NOBYPASSRLS`, and inherits no privileged role.
 
 `INSTALL_LIBREOFFICE=yes` installs only the headless Writer, Calc, and Impress components. Brian invokes `soffice --headless` when exporting its documents, presentations, spreadsheets, or `renderPdf` output to PDF. It is not needed to start the services; select `no` if PDF generation is not required.
 
 The public URLs must already be planned as `https://`/`wss://` origins because production authentication uses secure cookies. Leave `COOKIE_DOMAIN` empty for host-only cookies or set an isolated deployment domain such as `.client.example.com`; do not share a parent cookie domain between customers.
 
-The first installer prompt selects the dedicated service account, defaulting to `brian`. Every service runs as that account, and release/data directories are owned by it. The installer writes `/etc/brian/brian.env` as `0640` with the configured service group. Add any additional provider or connector credentials there after installation, then run `sudo systemctl restart 'brian-*'`.
+The first prompt selects the service account, defaulting to `brian`. `/etc/brian/brian.env` is `0640` with that service group. After editing it, restart only affected enabled services, for example `sudo systemctl restart brian-api brian-app-web`, then run `sudo brian-doctor`.
 
 ## Operations
 
 ```bash
 sudo brian-doctor
 sudo brian-update
+sudo brian-update BRANCH_OR_TAG_OR_COMMIT
+sudo brian-connectors status
+sudo brian-connectors enable discord
+sudo brian-connectors disable whatsapp
+# Connector names: discord, whatsapp, wechat, feishu
 sudo systemctl status 'brian-*'
 sudo journalctl -u brian-api -f
 ```
 
-`brian-update [git-ref]` clones and builds a versioned release, migrates, atomically switches `/var/lib/brian/platform`, and restarts the stack. Failed health checks restore the previous code release. Migrations are forward-only and are not rolled back, so take a database backup before updating.
+`brian-update [git-ref]` uses persisted `BRIAN_REF` when omitted. A branch, tag, or commit argument overrides it for that run only. It does not rewrite `/etc/brian/deploy.conf`.
+
+Use `brian-connectors status`, `brian-connectors enable <connector>`, or `brian-connectors disable <connector>`.
 
 ## Browser desktop
 
-The optional desktop runs Xvfb, Xfce, Chromium, the built Use Brian extension, and x11vnc on `127.0.0.1:5901`. Connect through SSH rather than opening VNC in the cloud firewall, then complete browser pairing in the Brian UI (custom self-host domains may require manual pairing):
+`INSTALL_BROWSER` defaults to `no`. When enabled, `VNC_PASSWORD` is generated if omitted and must be at most eight characters. Connect through SSH:
 
 ```bash
-ssh -L 5901:127.0.0.1:5901 debian@SERVER_IP
+ssh -L 5901:127.0.0.1:5901 SSH_USER@SERVER_IP
 vncviewer 127.0.0.1:5901
 ```
 
 ## Public ingress
 
-Application services are not opened by the Terraform firewall modules. The installer also enables UFW with inbound SSH only because several upstream processes bind all interfaces. Terminate HTTPS with a reverse proxy or tunnel on the host and route the configured app, API, and doc-sync hostnames to ports 3003, 4000, and 8080 over loopback. WebSocket upgrades must be enabled for doc-sync and browser relay. If a proxy must accept public traffic directly, add only its HTTP/HTTPS rules to UFW.
+The installer first permits SSH in UFW. Default proxy setup also opens 80/443 and routes app/API/doc-sync to loopback ports 3003/4000/8080. Custom mode leaves HTTP/HTTPS ingress to the operator. Port 8092 is not published by default Caddy.
 
-The cloud modules create a single encrypted boot disk but no backup policy. Before production use, configure provider snapshots or database backups for PostgreSQL and `/var/lib/brian`, and test restoration.
+The cloud modules create one boot disk and no backup policy. AWS explicitly encrypts its root volume; verify provider policy/defaults elsewhere. Configure and test backups for PostgreSQL and `/var/lib/brian`.
 
 ## Optional dependencies
 
-- HTTPS ingress: provide Caddy, Nginx, cloudflared, or another TLS/WebSocket-capable proxy. It is intentionally not selected automatically.
+- HTTPS ingress: default setup installs Caddy. Select `custom` for Nginx, cloudflared, a cloud load balancer, or another TLS/WebSocket proxy.
 - Local-folder opening: install `xdg-utils`, but this is disabled by default and requires the API to share a graphical session.
 - Archived WeChat SILK audio: requires an independently installed `silk_v3_decoder` and `WECHAT_SILK_DECODER_BIN`; Debian does not provide this binary.
 - E2B cloud browser and CLI MCP connectors use provider/operator-supplied credentials and binaries rather than host Debian packages.
