@@ -22,6 +22,6 @@ ssh -L 3003:127.0.0.1:3003 \
   -L 8080:127.0.0.1:8080 debian@SERVER_IP
 ```
 
-Both targets support local or external PostgreSQL 18 with separate owner and RLS application roles. Each target builds its supplied source tree into versioned native releases and runs services directly under systemd.
+Both targets support local or external PostgreSQL 18 with separate owner and RLS application roles. They clone public `use-brian` by default, build versioned native releases, and run services directly under systemd.
 
 See `terraform/README.md`, `deployment/oss/README.md`, and `deployment/outpost/README.md` for complete instructions.

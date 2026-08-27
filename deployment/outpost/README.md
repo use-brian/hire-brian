@@ -4,7 +4,7 @@ This directory installs the multi-user Outpost edition directly on Debian 12 or 
 
 ## Source prerequisite
 
-The operator supplies an updated standalone `use-brian` source tree on the host. The installer validates its Outpost-capable workspace manifests, builds a versioned release as the configured unprivileged service user, runs its open migrations in Outpost mode, and atomically activates `/var/lib/use-brian-outpost/platform`.
+By default, the installer clones the public `use-brian` repository at a configurable branch, tag, or commit. An existing source directory remains available for offline or prechecked installations. The installer validates Outpost-capable workspace manifests, builds a versioned release as the configured unprivileged service user, runs migrations, and atomically activates `/var/lib/use-brian-outpost/platform`.
 
 Required source-tree markers include:
 
@@ -18,12 +18,13 @@ Required source-tree markers include:
 ## Install
 
 ```bash
-sudo env OUTPOST_SOURCE_DIR=/srv/use-brian ./install.sh
+sudo ./install.sh
 ```
 
 The installer asks for:
 
 - Dedicated service account name, defaulting to `brian`.
+- Repository/ref or optional existing-directory source mode.
 - Local PostgreSQL 18 with pgvector, or external owner and RLS-role URLs.
 - Public HTTPS app, API, and auth origins plus the WSS doc-sync origin.
 - An isolated cookie domain.
@@ -78,7 +79,7 @@ This installer provisions a fresh Outpost database entirely from standalone `use
 
 ## Updates
 
-Update the supplied source tree, then run:
+For repository mode, update to the configured ref with:
 
 ```bash
 sudo outpost-update
@@ -86,6 +87,6 @@ sudo outpost-doctor
 sudo journalctl -u use-brian-outpost-api -f
 ```
 
-`outpost-update [source-directory]` stages a new release, performs a frozen install and filtered production build, stops writers, runs open and Outpost migrations, atomically switches the release symlink, starts enabled services, and runs health checks. Disabled connectors are excluded from service lifecycle and diagnostics.
+`outpost-update [ref-or-source-directory]` clones the configured ref or stages the configured directory, performs a frozen install and filtered production build, stops writers, runs migrations, atomically switches the release symlink, starts enabled services, and runs health checks. Disabled connectors are excluded from service lifecycle and diagnostics.
 
 Back up PostgreSQL and `/var/lib/use-brian-outpost/files` before updates. Application listeners remain behind UFW; provide a TLS reverse proxy or outbound tunnel with WebSocket support.

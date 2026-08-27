@@ -6,16 +6,6 @@ exec 9>/run/lock/use-brian-outpost-update.lock
 flock -n 9 || { echo "Another Outpost update is running." >&2; exit 1; }
 . /etc/use-brian-outpost/deploy.conf
 
-source_dir=${1:-$OUTPOST_SOURCE_DIR}
-source_dir=$(readlink -f "$source_dir")
-for marker in package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json apps/api/package.json \
-  apps/auth-web/package.json apps/app-web/package.json apps/doc-sync/package.json \
-  apps/discord-connector/package.json apps/wa-connector/package.json \
-  apps/browser-relay/package.json apps/wechat-connector/package.json \
-  apps/browser-extension/package.json apps/feishu-connector/package.json packages/api/migrations; do
-  [ -e "$source_dir/$marker" ] || { echo "Outpost source is missing $marker." >&2; exit 1; }
-done
-
 data=/var/lib/use-brian-outpost
 releases=$data/releases
 release="$releases/$(date -u +%Y%m%dT%H%M%SZ)-$(date +%N)"
@@ -33,12 +23,35 @@ if [ "$ENABLE_WECHAT" = yes ]; then units+=(use-brian-outpost-wechat); fi
 if [ "$ENABLE_FEISHU" = yes ]; then units+=(use-brian-outpost-feishu); fi
 if [ -e /etc/use-brian-outpost/browser-desktop ]; then units+=(use-brian-outpost-browser-desktop); fi
 
-echo ">> Staging source into $release"
 install -d -o "$BRIAN_USER" -g "$BRIAN_GROUP" -m 0750 "$releases" "$release"
-rsync -a --delete \
-  --exclude='.git/' --exclude='node_modules/' --exclude='dist/' --exclude='.next/' --exclude='.turbo/' \
-  "$source_dir/" "$release/"
+case "$OUTPOST_SOURCE_MODE" in
+  repository)
+    ref=${1:-$BRIAN_REF}
+    echo ">> Cloning $BRIAN_REPO at $ref"
+    runuser -u "$BRIAN_USER" -- git clone --no-checkout "$BRIAN_REPO" "$release"
+    runuser -u "$BRIAN_USER" -- git -C "$release" fetch --tags origin
+    target=$ref
+    if runuser -u "$BRIAN_USER" -- git -C "$release" show-ref --verify --quiet "refs/remotes/origin/$ref"; then target="origin/$ref"; fi
+    runuser -u "$BRIAN_USER" -- git -C "$release" checkout --detach "$target"
+    ;;
+  directory)
+    source_dir=${1:-$OUTPOST_SOURCE_DIR}
+    source_dir=$(readlink -f "$source_dir")
+    echo ">> Staging $source_dir into $release"
+    rsync -a --delete \
+      --exclude='.git/' --exclude='node_modules/' --exclude='dist/' --exclude='.next/' --exclude='.turbo/' \
+      "$source_dir/" "$release/"
+    ;;
+  *) echo "Invalid OUTPOST_SOURCE_MODE in deploy.conf." >&2; exit 1 ;;
+esac
 chown -R "$BRIAN_USER:$BRIAN_GROUP" "$release"
+for marker in package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json apps/api/package.json \
+  apps/auth-web/package.json apps/app-web/package.json apps/doc-sync/package.json \
+  apps/discord-connector/package.json apps/wa-connector/package.json \
+  apps/browser-relay/package.json apps/wechat-connector/package.json \
+  apps/browser-extension/package.json apps/feishu-connector/package.json packages/api/migrations; do
+  [ -e "$release/$marker" ] || { echo "Outpost source is missing $marker." >&2; exit 1; }
+done
 
 echo ">> Installing and building native release"
 runuser -u "$BRIAN_USER" -- env HOME="$data" \

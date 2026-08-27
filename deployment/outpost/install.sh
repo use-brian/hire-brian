@@ -21,12 +21,24 @@ cleanup_partial() {
 trap cleanup_partial EXIT
 
 configure_service_user
-ask OUTPOST_SOURCE_DIR "Absolute path to the supplied Outpost source tree"
-OUTPOST_SOURCE_DIR=$(readlink -f "$OUTPOST_SOURCE_DIR")
-for marker in package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json apps/api/package.json \
-  apps/auth-web/package.json apps/app-web/package.json apps/doc-sync/package.json packages/api/migrations; do
-  [ -e "$OUTPOST_SOURCE_DIR/$marker" ] || { echo "Source tree is missing $marker." >&2; exit 1; }
-done
+ask OUTPOST_SOURCE_MODE "Outpost source mode (repository/directory)" repository
+case "$OUTPOST_SOURCE_MODE" in
+  repository)
+    ask BRIAN_REPO "Use Brian repository" "https://github.com/use-brian/use-brian.git"
+    ask BRIAN_REF "Git branch, tag, or commit" main
+    OUTPOST_SOURCE_DIR=
+    ;;
+  directory)
+    ask OUTPOST_SOURCE_DIR "Absolute path to an existing use-brian source tree"
+    OUTPOST_SOURCE_DIR=$(readlink -f "$OUTPOST_SOURCE_DIR")
+    for marker in package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json apps/api/package.json \
+      apps/auth-web/package.json apps/app-web/package.json apps/doc-sync/package.json packages/api/migrations; do
+      [ -e "$OUTPOST_SOURCE_DIR/$marker" ] || { echo "Source tree is missing $marker." >&2; exit 1; }
+    done
+    BRIAN_REPO=; BRIAN_REF=
+    ;;
+  *) echo "OUTPOST_SOURCE_MODE must be repository or directory." >&2; exit 1 ;;
+esac
 detected_ssh_port=22
 if [ -n "${SSH_CONNECTION:-}" ]; then detected_ssh_port=${SSH_CONNECTION##* }; fi
 ask SSH_PORT "SSH server port to preserve in UFW" "$detected_ssh_port"
@@ -188,7 +200,9 @@ if [ "$ENABLE_FEISHU" = yes ]; then { write_env NODE_ENV production; write_env F
 chown "root:$BRIAN_GROUP" /etc/use-brian-outpost/*.env; chmod 0640 /etc/use-brian-outpost/*.env
 
 {
+  printf 'OUTPOST_SOURCE_MODE=%q\n' "$OUTPOST_SOURCE_MODE"
   printf 'OUTPOST_SOURCE_DIR=%q\n' "$OUTPOST_SOURCE_DIR"
+  printf 'BRIAN_REPO=%q\n' "$BRIAN_REPO"; printf 'BRIAN_REF=%q\n' "$BRIAN_REF"
   printf 'APP_URL=%q\n' "$APP_URL"; printf 'API_URL=%q\n' "$API_URL"; printf 'AUTH_PORTAL_URL=%q\n' "$AUTH_PORTAL_URL"
   printf 'DOC_SYNC_PUBLIC_URL=%q\n' "$DOC_SYNC_PUBLIC_URL"; printf 'LOCAL_POSTGRES=%q\n' "$LOCAL_POSTGRES"
   printf 'BRIAN_USER=%q\n' "$BRIAN_USER"; printf 'BRIAN_GROUP=%q\n' "$BRIAN_GROUP"
@@ -229,7 +243,7 @@ if is_yes "$INSTALL_BROWSER"; then systemctl enable use-brian-outpost-browser-de
 
 ufw allow "$SSH_PORT/tcp"; ufw default deny incoming; ufw default allow outgoing; ufw --force enable
 install_complete=1
-outpost-update "$OUTPOST_SOURCE_DIR"
+outpost-update
 if is_yes "$INSTALL_BROWSER"; then systemctl start use-brian-outpost-browser-desktop.service; fi
 configure_reverse_proxy \
   "$APP_URL" 3003 \
