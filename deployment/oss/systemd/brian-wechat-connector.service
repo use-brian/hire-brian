@@ -1,0 +1,24 @@
+[Unit]
+Description=Brian WeChat connector
+After=network-online.target brian-api.service
+Wants=network-online.target
+
+[Service]
+User=brian
+Group=brian
+WorkingDirectory=/var/lib/brian/platform
+EnvironmentFile=/etc/brian/brian.env
+Environment=HOME=/var/lib/brian PORT=8093 USEBRIAN_API_URL=http://127.0.0.1:4000
+ExecStartPre=/usr/local/lib/brian/wait-for-api
+ExecStart=/usr/bin/node apps/wechat-connector/dist/index.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/brian
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

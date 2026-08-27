@@ -1,0 +1,23 @@
+[Unit]
+Description=Brian API and background workers
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=brian
+Group=brian
+WorkingDirectory=/var/lib/brian/platform
+EnvironmentFile=/etc/brian/brian.env
+Environment=HOME=/var/lib/brian PORT=4000
+ExecStart=/usr/bin/node apps/api/dist/index.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/brian
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+[Unit]
+Description=Brian web application
+After=network-online.target brian-api.service
+Wants=network-online.target
+
+[Service]
+User=brian
+Group=brian
+WorkingDirectory=/var/lib/brian/platform/apps/app-web
+EnvironmentFile=/etc/brian/brian.env
+Environment=HOME=/var/lib/brian PORT=3003
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --port 3003
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/brian
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ "$(id -u)" -eq 0 ] || { echo "Run brian-update as root." >&2; exit 1; }
+exec 9>/run/lock/brian-update.lock
+flock -n 9 || { echo "Another Brian update is running." >&2; exit 1; }
+. /etc/brian/deploy.conf
+ref=${1:-$BRIAN_REF}
+platform=/var/lib/brian/platform
+releases=/var/lib/brian/releases
+release="$releases/$(date -u +%Y%m%dT%H%M%SZ)-$(date +%N)"
+units=(brian-app-web brian-doc-sync brian-discord-connector brian-wa-connector brian-browser-relay brian-wechat-connector brian-feishu-connector)
+
+echo ">> Fetching $BRIAN_REPO at $ref"
+install -d -o brian -g brian -m 0750 "$releases"
+runuser -u brian -- git clone --no-checkout "$BRIAN_REPO" "$release"
+runuser -u brian -- git -C "$release" fetch --tags origin
+target=$ref
+if runuser -u brian -- git -C "$release" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+  target="origin/$ref"
+fi
+runuser -u brian -- git -C "$release" checkout --detach "$target"
+
+echo ">> Installing and building"
+runuser -u brian -- env HOME=/var/lib/brian \
+  NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+  NEXT_PUBLIC_DOC_SYNC_URL="$NEXT_PUBLIC_DOC_SYNC_URL" \
+  NEXT_PUBLIC_USEBRIAN_EDITION=oss \
+  bash -c 'cd "$1" && corepack pnpm install --frozen-lockfile && corepack pnpm build' _ "$release"
+
+echo ">> Applying forward-only migrations"
+runuser -u brian -- bash -c '
+  set -euo pipefail
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in \#*) continue ;; esac
+    key=${line%%=*}
+    export "$key=${line#*=}"
+  done < /etc/brian/brian.env
+  cd "$1"
+  corepack pnpm --filter @use-brian/api migrate
+' _ "$release"
+
+if [ "${LOCAL_POSTGRES:-no}" = yes ]; then
+  /usr/local/lib/brian/grant-app-role
+fi
+
+echo ">> Activating release"
+previous=$(readlink -f "$platform" 2>/dev/null || true)
+ln -sfn "$release" /var/lib/brian/platform.new
+mv -Tf /var/lib/brian/platform.new "$platform"
+
+systemctl restart brian-api
+if ! /usr/local/lib/brian/wait-for-api; then
+  if [ -n "$previous" ] && [ -d "$previous" ]; then
+    ln -sfn "$previous" /var/lib/brian/platform.rollback
+    mv -Tf /var/lib/brian/platform.rollback "$platform"
+    systemctl restart brian-api "${units[@]}"
+  fi
+  echo "New release failed API readiness; previous code was restored. Database migrations were not rolled back." >&2
+  exit 1
+fi
+systemctl restart "${units[@]}"
+
+for _ in $(seq 1 30); do
+  if brian-doctor; then
+    echo ">> Release healthy: $release"
+    exit 0
+  fi
+  sleep 2
+done
+
+if [ -n "$previous" ] && [ -d "$previous" ]; then
+  echo ">> Health check failed; restoring previous release"
+  ln -sfn "$previous" /var/lib/brian/platform.rollback
+  mv -Tf /var/lib/brian/platform.rollback "$platform"
+  systemctl restart brian-api "${units[@]}"
+fi
+echo "Release failed health checks. Database migrations were not rolled back." >&2
+exit 1

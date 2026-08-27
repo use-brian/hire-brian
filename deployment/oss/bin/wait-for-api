@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+for _ in $(seq 1 120); do
+  curl --connect-timeout 1 --max-time 2 --fail --silent --output /dev/null http://127.0.0.1:4000/health && exit 0
+  sleep 1
+done
+echo "Brian API did not become ready within 120 seconds." >&2
+exit 1
