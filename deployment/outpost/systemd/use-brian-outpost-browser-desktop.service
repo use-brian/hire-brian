@@ -6,8 +6,8 @@ Requires=use-brian-outpost-browser-relay.service
 ConditionPathExists=/etc/use-brian-outpost/browser-desktop
 
 [Service]
-User=brian-outpost
-Group=brian-outpost
+User=@BRIAN_USER@
+Group=@BRIAN_GROUP@
 Environment=HOME=/var/lib/use-brian-outpost DISPLAY=:1
 ExecStart=/usr/local/lib/use-brian-outpost/start-browser-desktop
 Restart=always

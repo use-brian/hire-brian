@@ -4,8 +4,8 @@ After=network-online.target brian-api.service
 Wants=network-online.target
 
 [Service]
-User=brian
-Group=brian
+User=@BRIAN_USER@
+Group=@BRIAN_GROUP@
 WorkingDirectory=/var/lib/brian/platform
 EnvironmentFile=/etc/brian/brian.env
 Environment=HOME=/var/lib/brian HOST=127.0.0.1 PORT=8092

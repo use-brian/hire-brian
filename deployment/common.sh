@@ -54,6 +54,24 @@ write_env() {
   printf '%s=%s\n' "$1" "$2"
 }
 
+configure_service_user() {
+  ask BRIAN_USER "Dedicated service user" brian
+  [[ "$BRIAN_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || {
+    echo "BRIAN_USER must be a valid lowercase Linux system username." >&2
+    exit 1
+  }
+  BRIAN_GROUP=$BRIAN_USER
+}
+
+install_systemd_unit() {
+  local source=$1 destination=$2 content
+  content=$(<"$source")
+  content=${content//@BRIAN_USER@/$BRIAN_USER}
+  content=${content//@BRIAN_GROUP@/$BRIAN_GROUP}
+  printf '%s\n' "$content" > "$destination"
+  chmod 0644 "$destination"
+}
+
 configure_model_provider() {
   ask MODEL_PROVIDER "Primary model provider (gemini/vertex/dashscope/openai-codex)" gemini
   case "$MODEL_PROVIDER" in

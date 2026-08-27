@@ -31,6 +31,7 @@ For unattended installation, set all required values:
 ```bash
 sudo env \
   NONINTERACTIVE=1 \
+  BRIAN_USER=brian \
   INSTALL_POSTGRES=yes \
   INSTALL_BROWSER=no \
   INSTALL_LIBREOFFICE=yes \
@@ -46,13 +47,15 @@ When `INSTALL_POSTGRES=no`, also set `DATABASE_URL` and `DATABASE_URL_APP`. The 
 
 The installer asks for a primary model provider. Choose `gemini` to enter an API key, `dashscope` to enter an API key and optional base URL, `vertex` to enter a Google Cloud project/location, or `openai-codex` to complete interactive account sign-in after installation.
 
+At the end, choose `default` reverse proxy setup to install Caddy, configure the app/API/doc-sync hostnames, enable automatic TLS and WebSockets, and allow host ports 80/443. Choose `custom` to leave ingress unchanged. Cloud security-group/firewall rules and DNS still need to point ports 80/443 and the configured hostnames to this server.
+
 The external database preflight requires PostgreSQL 18 or newer, both extensions, and a `NOSUPERUSER`, `NOBYPASSRLS` application role. It checks connectivity before downloading and building Brian.
 
 `INSTALL_LIBREOFFICE=yes` installs only the headless Writer, Calc, and Impress components. Brian invokes `soffice --headless` when exporting its documents, presentations, spreadsheets, or `renderPdf` output to PDF. It is not needed to start the services; select `no` if PDF generation is not required.
 
 The public URLs must already be planned as `https://`/`wss://` origins because production authentication uses secure cookies. Leave `COOKIE_DOMAIN` empty for host-only cookies or set an isolated deployment domain such as `.client.example.com`; do not share a parent cookie domain between customers.
 
-The installer writes secrets to `/etc/brian/brian.env` (`0640`, `root:brian`). Add any additional provider or connector credentials there after installation, then run `sudo systemctl restart 'brian-*'`. The source and durable data live under `/var/lib/brian`; WhatsApp credentials and user files survive updates.
+The first installer prompt selects the dedicated service account, defaulting to `brian`. Every service runs as that account, and release/data directories are owned by it. The installer writes `/etc/brian/brian.env` as `0640` with the configured service group. Add any additional provider or connector credentials there after installation, then run `sudo systemctl restart 'brian-*'`.
 
 ## Operations
 
@@ -83,7 +86,6 @@ The cloud modules create a single encrypted boot disk but no backup policy. Befo
 ## Optional dependencies
 
 - HTTPS ingress: provide Caddy, Nginx, cloudflared, or another TLS/WebSocket-capable proxy. It is intentionally not selected automatically.
-- Firefox browser backend: install `firefox-esr` and set `USE_BRIAN_FIREFOX_PATH=/usr/bin/firefox-esr`.
 - Local-folder opening: install `xdg-utils`, but this is disabled by default and requires the API to share a graphical session.
 - Archived WeChat SILK audio: requires an independently installed `silk_v3_decoder` and `WECHAT_SILK_DECODER_BIN`; Debian does not provide this binary.
 - E2B cloud browser and CLI MCP connectors use provider/operator-supplied credentials and binaries rather than host Debian packages.

@@ -4,7 +4,7 @@ This directory installs the multi-user Outpost edition directly on Debian 12 or 
 
 ## Source prerequisite
 
-The operator supplies an updated standalone `use-brian` source tree on the host. The installer validates its Outpost-capable workspace manifests, builds a versioned release as the unprivileged `brian-outpost` user, runs its open migrations in Outpost mode, and atomically activates `/var/lib/use-brian-outpost/platform`.
+The operator supplies an updated standalone `use-brian` source tree on the host. The installer validates its Outpost-capable workspace manifests, builds a versioned release as the configured unprivileged service user, runs its open migrations in Outpost mode, and atomically activates `/var/lib/use-brian-outpost/platform`.
 
 Required source-tree markers include:
 
@@ -18,11 +18,12 @@ Required source-tree markers include:
 ## Install
 
 ```bash
-sudo env OUTPOST_SOURCE_DIR=/srv/use-brian-outpost-source ./install.sh
+sudo env OUTPOST_SOURCE_DIR=/srv/use-brian ./install.sh
 ```
 
 The installer asks for:
 
+- Dedicated service account name, defaulting to `brian`.
 - Local PostgreSQL 18 with pgvector, or external owner and RLS-role URLs.
 - Public HTTPS app, API, and auth origins plus the WSS doc-sync origin.
 - An isolated cookie domain.
@@ -36,6 +37,8 @@ The installer asks for:
 It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt.
 
 Supported provider choices are `gemini` (API key), `dashscope` (API key plus optional base URL), `vertex` (project/location with ADC or an optional service-account JSON supplied through the environment), and `openai-codex` (interactive account sign-in after installation, no API key).
+
+At the end, choose `default` reverse proxy setup to install Caddy, configure app/API/auth/doc-sync routing, enable automatic TLS and WebSockets, and allow host ports 80/443. Choose `custom` to leave ingress unchanged. The cloud security group and DNS remain provider-level configuration and must allow/resolve ports 80/443 to this host.
 
 ## Native services
 
@@ -52,7 +55,7 @@ Supported provider choices are `gemini` (API key), `dashscope` (API key plus opt
 | `use-brian-outpost-feishu` | 8095 | Feishu connector |
 | `use-brian-outpost-browser-desktop` | 5901 localhost | Optional Chromium virtual desktop |
 
-Every unit runs under the unprivileged `brian-outpost` account with systemd filesystem protections, memory limits, automatic restart, per-service environment files, and journald logging.
+Every unit runs under the configured unprivileged service account with systemd filesystem protections, memory limits, automatic restart, per-service environment files, and journald logging. Releases, files, browser profiles, and build state are owned by that account.
 
 When selected, the installer builds and loads the Use Brian Chromium extension, stores the browser profile under `/var/lib/use-brian-outpost/chromium`, and binds VNC only to localhost. Connect through SSH:
 

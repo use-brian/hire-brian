@@ -34,14 +34,14 @@ units=(
 if [ -e /etc/use-brian-outpost/browser-desktop ]; then units+=(use-brian-outpost-browser-desktop); fi
 
 echo ">> Staging source into $release"
-install -d -o brian-outpost -g brian-outpost -m 0750 "$releases" "$release"
+install -d -o "$BRIAN_USER" -g "$BRIAN_GROUP" -m 0750 "$releases" "$release"
 rsync -a --delete \
   --exclude='.git/' --exclude='node_modules/' --exclude='dist/' --exclude='.next/' --exclude='.turbo/' \
   "$source_dir/" "$release/"
-chown -R brian-outpost:brian-outpost "$release"
+chown -R "$BRIAN_USER:$BRIAN_GROUP" "$release"
 
 echo ">> Installing and building native release"
-runuser -u brian-outpost -- env HOME="$data" \
+runuser -u "$BRIAN_USER" -- env HOME="$data" \
   NEXT_PUBLIC_USEBRIAN_EDITION=outpost \
   NEXT_PUBLIC_PRIMARY_AUTH_URL="$AUTH_PORTAL_URL" \
   NEXT_PUBLIC_APP_URL="$APP_URL" \
@@ -69,7 +69,7 @@ echo ">> Stopping application writers"
 systemctl stop "${units[@]}"
 
 echo ">> Applying standalone Outpost migrations"
-if ! runuser -u brian-outpost -- bash -c '
+if ! runuser -u "$BRIAN_USER" -- bash -c '
   set -euo pipefail
   while IFS= read -r line; do
     [ -z "$line" ] && continue

@@ -12,24 +12,24 @@ release="$releases/$(date -u +%Y%m%dT%H%M%SZ)-$(date +%N)"
 units=(brian-app-web brian-doc-sync brian-discord-connector brian-wa-connector brian-browser-relay brian-wechat-connector brian-feishu-connector)
 
 echo ">> Fetching $BRIAN_REPO at $ref"
-install -d -o brian -g brian -m 0750 "$releases"
-runuser -u brian -- git clone --no-checkout "$BRIAN_REPO" "$release"
-runuser -u brian -- git -C "$release" fetch --tags origin
+install -d -o "$BRIAN_USER" -g "$BRIAN_GROUP" -m 0750 "$releases"
+runuser -u "$BRIAN_USER" -- git clone --no-checkout "$BRIAN_REPO" "$release"
+runuser -u "$BRIAN_USER" -- git -C "$release" fetch --tags origin
 target=$ref
-if runuser -u brian -- git -C "$release" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+if runuser -u "$BRIAN_USER" -- git -C "$release" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
   target="origin/$ref"
 fi
-runuser -u brian -- git -C "$release" checkout --detach "$target"
+runuser -u "$BRIAN_USER" -- git -C "$release" checkout --detach "$target"
 
 echo ">> Installing and building"
-runuser -u brian -- env HOME=/var/lib/brian \
+runuser -u "$BRIAN_USER" -- env HOME=/var/lib/brian \
   NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
   NEXT_PUBLIC_DOC_SYNC_URL="$NEXT_PUBLIC_DOC_SYNC_URL" \
   NEXT_PUBLIC_USEBRIAN_EDITION=oss \
   bash -c 'cd "$1" && corepack pnpm install --frozen-lockfile && corepack pnpm build' _ "$release"
 
 echo ">> Applying forward-only migrations"
-runuser -u brian -- bash -c '
+runuser -u "$BRIAN_USER" -- bash -c '
   set -euo pipefail
   while IFS= read -r line; do
     [ -z "$line" ] && continue

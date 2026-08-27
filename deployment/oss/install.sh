@@ -28,6 +28,7 @@ cleanup_partial_install() {
 }
 trap cleanup_partial_install EXIT
 
+configure_service_user
 ask INSTALL_POSTGRES "Install PostgreSQL 18 and pgvector locally? (yes/no)" yes
 ask INSTALL_BROWSER "Install Chromium, Xfce, Xvfb, and local-only VNC? (yes/no)" no
 ask INSTALL_LIBREOFFICE "Install headless LibreOffice for PDF exports? (yes/no)" yes
@@ -89,10 +90,10 @@ ufw default deny incoming
 ufw default allow outgoing
 ufw --force enable
 
-getent group brian >/dev/null || groupadd --system brian
-id brian >/dev/null 2>&1 || useradd --system --gid brian --home-dir /var/lib/brian --shell /usr/sbin/nologin brian
-install -d -o brian -g brian -m 0750 /var/lib/brian /var/lib/brian/files /var/lib/brian/wa-creds
-install -d -o root -g brian -m 0750 /etc/brian
+getent group "$BRIAN_GROUP" >/dev/null || groupadd --system "$BRIAN_GROUP"
+id "$BRIAN_USER" >/dev/null 2>&1 || useradd --system --gid "$BRIAN_GROUP" --home-dir /var/lib/brian --shell /usr/sbin/nologin "$BRIAN_USER"
+install -d -o "$BRIAN_USER" -g "$BRIAN_GROUP" -m 0750 /var/lib/brian /var/lib/brian/files /var/lib/brian/wa-creds
+install -d -o root -g "$BRIAN_GROUP" -m 0750 /etc/brian
 
 if is_yes "$INSTALL_POSTGRES"; then
   echo ">> Installing local PostgreSQL"
@@ -166,7 +167,7 @@ LLM_PROVIDER_KEY_ENCRYPTION_KEY=${LLM_PROVIDER_KEY_ENCRYPTION_KEY:-$(openssl ran
   write_env LLM_PROVIDER_KEY_ENCRYPTION_KEY "$LLM_PROVIDER_KEY_ENCRYPTION_KEY"
   write_env LOCAL_FILES_DIR /var/lib/brian/files
 } > /etc/brian/brian.env
-chown root:brian /etc/brian/brian.env
+chown "root:$BRIAN_GROUP" /etc/brian/brian.env
 chmod 0640 /etc/brian/brian.env
 
 {
@@ -175,6 +176,8 @@ chmod 0640 /etc/brian/brian.env
   printf 'NEXT_PUBLIC_API_URL=%q\n' "$API_URL"
   printf 'NEXT_PUBLIC_DOC_SYNC_URL=%q\n' "$DOC_SYNC_PUBLIC_URL"
   printf 'LOCAL_POSTGRES=%q\n' "$(is_yes "$INSTALL_POSTGRES" && printf yes || printf no)"
+  printf 'BRIAN_USER=%q\n' "$BRIAN_USER"
+  printf 'BRIAN_GROUP=%q\n' "$BRIAN_GROUP"
 } > /etc/brian/deploy.conf
 chmod 0600 /etc/brian/deploy.conf
 
@@ -184,19 +187,21 @@ install -m 0755 "$HERE/bin/brian-doctor" /usr/local/bin/brian-doctor
 install -d -m 0755 /usr/local/lib/brian
 install -m 0755 "$HERE/bin/grant-app-role" /usr/local/lib/brian/grant-app-role
 install -m 0755 "$HERE/bin/wait-for-api" /usr/local/lib/brian/wait-for-api
-install -m 0644 "$HERE/systemd/"brian-{api,app-web,doc-sync,discord-connector,wa-connector,browser-relay,wechat-connector,feishu-connector}.service /etc/systemd/system/
+for unit in brian-{api,app-web,doc-sync,discord-connector,wa-connector,browser-relay,wechat-connector,feishu-connector}.service; do
+  install_systemd_unit "$HERE/systemd/$unit" "/etc/systemd/system/$unit"
+done
 
 if is_yes "$INSTALL_BROWSER"; then
   echo ">> Installing local-only browser desktop"
   apt-get install -y --no-install-recommends chromium xfce4 xfce4-terminal xvfb x11vnc x11-utils dbus-x11
   install -m 0755 "$HERE/bin/start-browser-desktop" /usr/local/lib/brian/start-browser-desktop
-  install -m 0644 "$HERE/systemd/brian-browser-desktop.service" /etc/systemd/system/
+  install_systemd_unit "$HERE/systemd/brian-browser-desktop.service" /etc/systemd/system/brian-browser-desktop.service
   if [ -z "${VNC_PASSWORD:-}" ]; then
     if [ "$NONINTERACTIVE" = 1 ]; then VNC_PASSWORD=$(openssl rand -hex 4); else ask_secret VNC_PASSWORD "VNC password (maximum 8 characters)"; fi
   fi
   if [ "${#VNC_PASSWORD}" -gt 8 ]; then echo "VNC_PASSWORD must not exceed 8 characters." >&2; exit 1; fi
   x11vnc -storepasswd "$VNC_PASSWORD" /etc/brian/vnc.pass >/dev/null
-  chown root:brian /etc/brian/vnc.pass
+  chown "root:$BRIAN_GROUP" /etc/brian/vnc.pass
   chmod 0640 /etc/brian/vnc.pass
 fi
 

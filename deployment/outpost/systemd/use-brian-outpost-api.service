@@ -4,8 +4,8 @@ After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
-User=brian-outpost
-Group=brian-outpost
+User=@BRIAN_USER@
+Group=@BRIAN_GROUP@
 WorkingDirectory=/var/lib/use-brian-outpost/platform
 EnvironmentFile=/etc/use-brian-outpost/api.env
 Environment=HOME=/var/lib/use-brian-outpost PORT=4000

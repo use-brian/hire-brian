@@ -20,6 +20,7 @@ cleanup_partial() {
 }
 trap cleanup_partial EXIT
 
+configure_service_user
 ask OUTPOST_SOURCE_DIR "Absolute path to the supplied Outpost source tree"
 OUTPOST_SOURCE_DIR=$(readlink -f "$OUTPOST_SOURCE_DIR")
 for marker in package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json apps/api/package.json \
@@ -90,10 +91,10 @@ apt-get install -y nodejs postgresql-client-18
 corepack enable
 corepack prepare pnpm@10.33.0 --activate
 
-getent group brian-outpost >/dev/null || groupadd --system brian-outpost
-id brian-outpost >/dev/null 2>&1 || useradd --system --gid brian-outpost --home-dir /var/lib/use-brian-outpost --shell /usr/sbin/nologin brian-outpost
-install -d -o brian-outpost -g brian-outpost -m 0750 /var/lib/use-brian-outpost /var/lib/use-brian-outpost/files /var/lib/use-brian-outpost/releases
-install -d -o root -g brian-outpost -m 0750 /etc/use-brian-outpost
+getent group "$BRIAN_GROUP" >/dev/null || groupadd --system "$BRIAN_GROUP"
+id "$BRIAN_USER" >/dev/null 2>&1 || useradd --system --gid "$BRIAN_GROUP" --home-dir /var/lib/use-brian-outpost --shell /usr/sbin/nologin "$BRIAN_USER"
+install -d -o "$BRIAN_USER" -g "$BRIAN_GROUP" -m 0750 /var/lib/use-brian-outpost /var/lib/use-brian-outpost/files /var/lib/use-brian-outpost/releases
+install -d -o root -g "$BRIAN_GROUP" -m 0750 /etc/use-brian-outpost
 
 if is_yes "$INSTALL_POSTGRES"; then
   apt-get install -y postgresql-18 postgresql-18-pgvector
@@ -186,12 +187,13 @@ LLM_PROVIDER_KEY_ENCRYPTION_KEY=${LLM_PROVIDER_KEY_ENCRYPTION_KEY:-$(openssl ran
 { write_env NODE_ENV production; write_env WECHAT_CONNECTOR_SECRET "$WECHAT_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/wechat.env
 { write_env NODE_ENV production; write_env FEISHU_CONNECTOR_SECRET "$FEISHU_CONNECTOR_SECRET"; } > /etc/use-brian-outpost/feishu.env
 { write_env NODE_ENV production; write_env USEBRIAN_EDITION outpost; write_env DATABASE_URL "$DATABASE_URL"; } > /etc/use-brian-outpost/migrate.env
-chown root:brian-outpost /etc/use-brian-outpost/*.env; chmod 0640 /etc/use-brian-outpost/*.env
+chown "root:$BRIAN_GROUP" /etc/use-brian-outpost/*.env; chmod 0640 /etc/use-brian-outpost/*.env
 
 {
   printf 'OUTPOST_SOURCE_DIR=%q\n' "$OUTPOST_SOURCE_DIR"
   printf 'APP_URL=%q\n' "$APP_URL"; printf 'API_URL=%q\n' "$API_URL"; printf 'AUTH_PORTAL_URL=%q\n' "$AUTH_PORTAL_URL"
   printf 'DOC_SYNC_PUBLIC_URL=%q\n' "$DOC_SYNC_PUBLIC_URL"; printf 'LOCAL_POSTGRES=%q\n' "$LOCAL_POSTGRES"
+  printf 'BRIAN_USER=%q\n' "$BRIAN_USER"; printf 'BRIAN_GROUP=%q\n' "$BRIAN_GROUP"
 } > /etc/use-brian-outpost/deploy.conf
 chmod 0600 /etc/use-brian-outpost/deploy.conf
 

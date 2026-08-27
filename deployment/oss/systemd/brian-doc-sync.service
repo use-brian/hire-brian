@@ -4,8 +4,8 @@ After=network-online.target postgresql.service brian-api.service
 Wants=network-online.target
 
 [Service]
-User=brian
-Group=brian
+User=@BRIAN_USER@
+Group=@BRIAN_GROUP@
 WorkingDirectory=/var/lib/brian/platform
 EnvironmentFile=/etc/brian/brian.env
 Environment=HOME=/var/lib/brian PORT=8080 API_INTERNAL_URL=http://127.0.0.1:4000
