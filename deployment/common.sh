@@ -155,3 +155,61 @@ validate_external_postgres() {
   dangerous_memberships=$(psql "$database_url_app" -Atc "SELECT count(*) FROM pg_roles WHERE (rolsuper OR rolbypassrls) AND pg_has_role(current_user, oid, 'member')")
   [ "$dangerous_memberships" -eq 0 ] || { echo "Application role inherits a privileged role." >&2; exit 1; }
 }
+
+public_host_from_url() {
+  local url=$1 authority
+  case "$url" in
+    https://*) authority=${url#https://} ;;
+    wss://*) authority=${url#wss://} ;;
+    *) echo "Public URL must use https:// or wss://: $url" >&2; return 1 ;;
+  esac
+  authority=${authority%%/*}
+  case "$authority" in *:*|*@*|*\?*|*\#*) echo "Public URL must be a hostname without credentials or a custom port: $url" >&2; return 1 ;; esac
+  [[ "$authority" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || {
+    echo "Invalid public hostname: $authority" >&2
+    return 1
+  }
+  printf '%s' "$authority"
+}
+
+configure_reverse_proxy() {
+  local host port
+  local -A configured_hosts=()
+  ask REVERSE_PROXY_SETUP "Reverse proxy setup (default/custom)" default
+  case "$REVERSE_PROXY_SETUP" in
+    custom)
+      echo "Reverse proxy left to the operator. Keep application ports private and publish only HTTPS/WSS."
+      return 0
+      ;;
+    default) ;;
+    *) echo "REVERSE_PROXY_SETUP must be default or custom." >&2; exit 1 ;;
+  esac
+
+  [ $(( $# % 2 )) -eq 0 ] || { echo "Reverse proxy routes must be URL/port pairs." >&2; exit 1; }
+  apt-get update
+  apt-get install -y --no-install-recommends caddy
+  install -d -m 0755 /etc/caddy
+  if [ -s /etc/caddy/Caddyfile ]; then
+    cp -a /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.pre-use-brian.$(date -u +%Y%m%dT%H%M%SZ)"
+  fi
+  : > /etc/caddy/Caddyfile
+  while [ "$#" -gt 0 ]; do
+    host=$(public_host_from_url "$1")
+    port=$2
+    [[ "$port" =~ ^[0-9]+$ ]] || { echo "Invalid reverse proxy port: $port" >&2; exit 1; }
+    [ -z "${configured_hosts[$host]:-}" ] || {
+      echo "Default reverse proxy setup requires distinct service hostnames; choose custom for same-origin routing." >&2
+      exit 1
+    }
+    configured_hosts[$host]=1
+    printf '%s {\n\treverse_proxy 127.0.0.1:%s\n}\n\n' "$host" "$port" >> /etc/caddy/Caddyfile
+    shift 2
+  done
+  caddy fmt --overwrite /etc/caddy/Caddyfile
+  caddy validate --config /etc/caddy/Caddyfile
+  ufw allow 80/tcp
+  ufw allow 443/tcp
+  systemctl enable caddy
+  if systemctl is-active --quiet caddy; then systemctl reload caddy; else systemctl start caddy; fi
+  echo "Default Caddy reverse proxy configured with automatic TLS and WebSocket forwarding."
+}

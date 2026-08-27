@@ -214,6 +214,10 @@ echo ">> Building, migrating, and starting Brian (this can take several minutes)
 
 if is_yes "$INSTALL_BROWSER"; then systemctl start brian-browser-desktop.service; fi
 install_complete=1
+configure_reverse_proxy \
+  "$APP_URL" 3003 \
+  "$API_URL" 4000 \
+  "$DOC_SYNC_PUBLIC_URL" 8080
 
 echo
 echo "Brian installation complete."
