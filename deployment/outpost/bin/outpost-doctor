@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -u
+
+failed=0
+units=(api auth app doc-sync discord whatsapp browser-relay wechat feishu)
+if [ -e /etc/use-brian-outpost/browser-desktop ]; then units+=(browser-desktop); fi
+
+check_url() {
+  local name=$1 url=$2
+  if curl --max-time 3 --fail --silent --show-error --output /dev/null "$url"; then
+    printf '%-24s OK\n' "$name"
+  else
+    printf '%-24s FAILED (%s)\n' "$name" "$url"
+    failed=1
+  fi
+}
+
+for unit in "${units[@]}"; do
+  if systemctl is-active --quiet "use-brian-outpost-$unit.service"; then
+    printf '%-24s active\n' "$unit"
+  else
+    printf '%-24s INACTIVE\n' "$unit"
+    failed=1
+  fi
+done
+
+check_url api http://127.0.0.1:4000/health
+check_url auth http://127.0.0.1:3005/health
+check_url app http://127.0.0.1:3003/
+check_url doc-sync http://127.0.0.1:8080/health
+check_url discord http://127.0.0.1:8090/health
+check_url whatsapp http://127.0.0.1:8091/health
+check_url browser-relay http://127.0.0.1:8092/health
+check_url wechat http://127.0.0.1:8093/health
+check_url feishu http://127.0.0.1:8095/health
+exit "$failed"

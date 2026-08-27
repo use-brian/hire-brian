@@ -1,0 +1,24 @@
+[Unit]
+Description=Use Brian Outpost document sync
+After=network-online.target use-brian-outpost-api.service postgresql.service
+Requires=use-brian-outpost-api.service
+
+[Service]
+User=brian-outpost
+Group=brian-outpost
+WorkingDirectory=/var/lib/use-brian-outpost/platform
+EnvironmentFile=/etc/use-brian-outpost/doc-sync.env
+Environment=HOME=/var/lib/use-brian-outpost PORT=8080 API_INTERNAL_URL=http://127.0.0.1:4000
+ExecStartPre=/usr/local/lib/use-brian-outpost/wait-for-api
+ExecStart=/usr/bin/node apps/doc-sync/dist/index.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/use-brian-outpost
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

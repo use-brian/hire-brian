@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+read_env_value() {
+  local file=$1 wanted=$2 key value
+  while IFS='=' read -r key value; do
+    if [ "$key" = "$wanted" ]; then printf '%s' "$value"; return 0; fi
+  done < "$file"
+  return 1
+}
+
+database_url=$(read_env_value /etc/use-brian-outpost/migrate.env DATABASE_URL)
+database_url_app=$(read_env_value /etc/use-brian-outpost/doc-sync.env DATABASE_URL_APP)
+owner_role=$(psql "$database_url" -Atc 'SELECT current_user')
+app_role=$(psql "$database_url_app" -Atc 'SELECT current_user')
+[ "$owner_role" != "$app_role" ] || { echo "Owner and application roles must differ." >&2; exit 1; }
+
+psql "$database_url" --set=ON_ERROR_STOP=1 --set=app_role="$app_role" --set=owner_role="$owner_role" <<'SQL'
+SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'app_role') \gexec
+SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'app_role') \gexec
+SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I', :'app_role') \gexec
+SELECT format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', :'app_role') \gexec
+SELECT format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO %I', :'app_role') \gexec
+SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I', :'owner_role', :'app_role') \gexec
+SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO %I', :'owner_role', :'app_role') \gexec
+SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO %I', :'owner_role', :'app_role') \gexec
+SQL

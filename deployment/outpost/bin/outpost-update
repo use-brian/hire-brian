@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ "$(id -u)" -eq 0 ] || { echo "Run outpost-update as root." >&2; exit 1; }
+exec 9>/run/lock/use-brian-outpost-update.lock
+flock -n 9 || { echo "Another Outpost update is running." >&2; exit 1; }
+. /etc/use-brian-outpost/deploy.conf
+
+source_dir=${1:-$OUTPOST_SOURCE_DIR}
+source_dir=$(readlink -f "$source_dir")
+for marker in package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json apps/api/package.json \
+  apps/auth-web/package.json apps/app-web/package.json apps/doc-sync/package.json \
+  apps/discord-connector/package.json apps/wa-connector/package.json \
+  apps/browser-relay/package.json apps/wechat-connector/package.json \
+  apps/browser-extension/package.json apps/feishu-connector/package.json packages/api/migrations; do
+  [ -e "$source_dir/$marker" ] || { echo "Outpost source is missing $marker." >&2; exit 1; }
+done
+
+data=/var/lib/use-brian-outpost
+releases=$data/releases
+release="$releases/$(date -u +%Y%m%dT%H%M%SZ)-$(date +%N)"
+platform=$data/platform
+units=(
+  use-brian-outpost-api
+  use-brian-outpost-auth
+  use-brian-outpost-app
+  use-brian-outpost-doc-sync
+  use-brian-outpost-discord
+  use-brian-outpost-whatsapp
+  use-brian-outpost-browser-relay
+  use-brian-outpost-wechat
+  use-brian-outpost-feishu
+)
+if [ -e /etc/use-brian-outpost/browser-desktop ]; then units+=(use-brian-outpost-browser-desktop); fi
+
+echo ">> Staging source into $release"
+install -d -o brian-outpost -g brian-outpost -m 0750 "$releases" "$release"
+rsync -a --delete \
+  --exclude='.git/' --exclude='node_modules/' --exclude='dist/' --exclude='.next/' --exclude='.turbo/' \
+  "$source_dir/" "$release/"
+chown -R brian-outpost:brian-outpost "$release"
+
+echo ">> Installing and building native release"
+runuser -u brian-outpost -- env HOME="$data" \
+  NEXT_PUBLIC_USEBRIAN_EDITION=outpost \
+  NEXT_PUBLIC_PRIMARY_AUTH_URL="$AUTH_PORTAL_URL" \
+  NEXT_PUBLIC_APP_URL="$APP_URL" \
+  NEXT_PUBLIC_AUTHED_APP_URL="$APP_URL" \
+  NEXT_PUBLIC_API_URL="$API_URL" \
+  NEXT_PUBLIC_DOC_SYNC_URL="$DOC_SYNC_PUBLIC_URL" \
+  bash -c '
+    set -euo pipefail
+    cd "$1"
+    corepack pnpm install --frozen-lockfile --prod=false
+    NODE_ENV=production corepack pnpm turbo run build \
+      --filter=@use-brian/api-open \
+      --filter=@use-brian/auth-web \
+      --filter=app-web \
+      --filter=@use-brian/doc-sync \
+      --filter=@use-brian/discord-connector \
+      --filter=@use-brian/wa-connector \
+      --filter=@use-brian/browser-relay \
+      --filter=@use-brian/browser-extension \
+      --filter=@use-brian/wechat-connector \
+      --filter=@use-brian/feishu-connector
+  ' _ "$release"
+
+echo ">> Stopping application writers"
+systemctl stop "${units[@]}"
+
+echo ">> Applying standalone Outpost migrations"
+if ! runuser -u brian-outpost -- bash -c '
+  set -euo pipefail
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in \#*) continue ;; esac
+    key=${line%%=*}
+    export "$key=${line#*=}"
+  done < /etc/use-brian-outpost/migrate.env
+  cd "$1"
+  corepack pnpm --filter @use-brian/api migrate
+' _ "$release"; then
+  systemctl start "${units[@]}"
+  echo "Migration failed; previous release was restarted." >&2
+  exit 1
+fi
+
+/usr/local/lib/use-brian-outpost/grant-role
+
+previous=$(readlink -f "$platform" 2>/dev/null || true)
+ln -sfn "$release" "$data/platform.new"
+mv -Tf "$data/platform.new" "$platform"
+
+systemctl restart use-brian-outpost-api.service
+if ! /usr/local/lib/use-brian-outpost/wait-for-api; then
+  if [ -n "$previous" ] && [ -d "$previous" ]; then
+    ln -sfn "$previous" "$data/platform.rollback"
+    mv -Tf "$data/platform.rollback" "$platform"
+    systemctl restart "${units[@]}"
+  fi
+  echo "API readiness failed; previous code was restored. Migrations were not rolled back." >&2
+  exit 1
+fi
+systemctl restart "${units[@]:1}"
+
+for _ in $(seq 1 60); do
+  if outpost-doctor; then echo ">> Release healthy: $release"; exit 0; fi
+  sleep 2
+done
+
+if [ -n "$previous" ] && [ -d "$previous" ]; then
+  ln -sfn "$previous" "$data/platform.rollback"
+  mv -Tf "$data/platform.rollback" "$platform"
+  systemctl restart "${units[@]}"
+fi
+echo "Release failed health checks; previous code was restored when available. Migrations were not rolled back." >&2
+exit 1

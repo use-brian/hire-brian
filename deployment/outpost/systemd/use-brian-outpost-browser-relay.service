@@ -1,0 +1,24 @@
+[Unit]
+Description=Use Brian Outpost browser relay
+After=network-online.target use-brian-outpost-api.service
+Requires=use-brian-outpost-api.service
+
+[Service]
+User=brian-outpost
+Group=brian-outpost
+WorkingDirectory=/var/lib/use-brian-outpost/platform
+EnvironmentFile=/etc/use-brian-outpost/browser-relay.env
+Environment=HOME=/var/lib/use-brian-outpost HOST=127.0.0.1 PORT=8092
+ExecStartPre=/usr/local/lib/use-brian-outpost/wait-for-api
+ExecStart=/usr/bin/node apps/browser-relay/dist/index.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/use-brian-outpost
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+[Unit]
+Description=Use Brian Outpost Chromium virtual desktop
+After=network-online.target use-brian-outpost-browser-relay.service
+Wants=network-online.target
+Requires=use-brian-outpost-browser-relay.service
+ConditionPathExists=/etc/use-brian-outpost/browser-desktop
+
+[Service]
+User=brian-outpost
+Group=brian-outpost
+Environment=HOME=/var/lib/use-brian-outpost DISPLAY=:1
+ExecStart=/usr/local/lib/use-brian-outpost/start-browser-desktop
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/use-brian-outpost -/tmp/.X11-unix
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target
