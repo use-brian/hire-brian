@@ -207,14 +207,17 @@ if is_yes "$INSTALL_BROWSER"; then
   fi
   [ "${#VNC_PASSWORD}" -le 8 ] || { echo "VNC password must not exceed 8 characters." >&2; exit 1; }
   x11vnc -storepasswd "$VNC_PASSWORD" /etc/use-brian-outpost/vnc.pass >/dev/null
-  chown root:brian-outpost /etc/use-brian-outpost/vnc.pass
+  chown "root:$BRIAN_GROUP" /etc/use-brian-outpost/vnc.pass
   chmod 0640 /etc/use-brian-outpost/vnc.pass
   touch /etc/use-brian-outpost/browser-desktop
   chmod 0600 /etc/use-brian-outpost/browser-desktop
 fi
 install -m 0755 "$HERE/bin/outpost-doctor" /usr/local/bin/outpost-doctor
 install -m 0755 "$HERE/bin/outpost-update" /usr/local/bin/outpost-update
-install -m 0644 "$HERE/systemd/"use-brian-outpost-*.service /etc/systemd/system/
+for unit_path in "$HERE/systemd/"use-brian-outpost-*.service; do
+  unit=${unit_path##*/}
+  install_systemd_unit "$unit_path" "/etc/systemd/system/$unit"
+done
 systemctl daemon-reload
 systemctl enable use-brian-outpost-{api,auth,app,doc-sync,discord,whatsapp,browser-relay,wechat,feishu}.service
 if is_yes "$INSTALL_BROWSER"; then systemctl enable use-brian-outpost-browser-desktop.service; fi
