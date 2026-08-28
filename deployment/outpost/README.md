@@ -36,6 +36,9 @@ The installer asks for:
 - An isolated cookie domain.
 - Whether the TLS ingress sanitizes and supplies trusted client-IP headers.
 - Email or OIDC authentication.
+- For email authentication, the SMTP host, port, TLS mode, account, password,
+  and visible From address. Use `SMTP_SECURE=false` for STARTTLS (normally port
+  587) or `SMTP_SECURE=true` for implicit TLS (normally port 465).
 - Primary model provider and its required API key or cloud project.
 - Optional headless LibreOffice for PDF output.
 - Optional Chromium/Xfce virtual desktop with Xvfb and localhost-only VNC.
@@ -45,6 +48,12 @@ The installer asks for:
 It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt.
 
 Important defaults are `BRIAN_USER=brian`, `OUTPOST_SOURCE_MODE=repository`, `INSTALL_POSTGRES=yes`, `INSTALL_LIBREOFFICE=yes`, `INSTALL_BROWSER=no`, all four `ENABLE_*` connector values `yes`, and `REVERSE_PROXY_SETUP=default`. For noninteractive installation set `NONINTERACTIVE=1` and pass variables from `outpost.env.example` through `sudo env`; the installer does not read that file automatically.
+
+Email authentication defaults to `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`,
+and `SMTP_SECURE=false`, but accepts any authenticated SMTP submission server.
+Existing noninteractive installs may still supply `GMAIL_SMTP_USER` and
+`GMAIL_SMTP_APP_PASSWORD`; the installer maps them to the generic credential
+names when `SMTP_USER` and `SMTP_PASSWORD` are absent.
 
 `MODEL_PROVIDER` defaults to `gemini`. Gemini uses `GEMINI_API_KEY`; DashScope uses `DASHSCOPE_API_KEY` plus optional `DASHSCOPE_BASE_URL`; Vertex uses `VERTEX_PROJECT_ID`, `VERTEX_LOCATION` (default `asia-east2`), and optional compact `VERTEX_SERVICE_ACCOUNT_JSON`; OpenAI Codex stores the preference without a key and is authorized through the deployed Brian provider flow.
 
