@@ -17,15 +17,31 @@ ask() {
 }
 
 ask_secret() {
-  local variable=$1 prompt=$2 value
+  local variable=$1 prompt=$2 value character
   value=${!variable:-}
   if [ -z "$value" ]; then
     if [ "${NONINTERACTIVE:-0}" = 1 ]; then
       echo "$variable is required in non-interactive mode." >&2
       exit 1
     fi
-    read -r -s -p "$prompt: " value
-    echo
+    printf '%s: ' "$prompt"
+    while true; do
+      if ! IFS= read -r -s -n 1 character; then
+        printf '\n'
+        return 1
+      fi
+      [ -n "$character" ] || break
+      case "$character" in
+        $'\b'|$'\177')
+          if [ -n "$value" ]; then
+            value=${value%?}
+            printf '\b \b'
+          fi
+          ;;
+        *) value+=$character; printf '*' ;;
+      esac
+    done
+    printf '\n'
   fi
   printf -v "$variable" '%s' "$value"
 }
@@ -39,6 +55,50 @@ ask_optional() {
     read -r -p "$prompt (leave blank for default): " value
     printf -v "$variable" '%s' "$value"
   fi
+}
+
+reject_input() {
+  local variable=$1 message=$2
+  echo "$message" >&2
+  if [ "${NONINTERACTIVE:-0}" = 1 ]; then exit 1; fi
+  printf -v "$variable" '%s' ''
+}
+
+ask_choice() {
+  local variable=$1 prompt=$2 default=$3 value choice allowed
+  shift 3
+  allowed=$*
+  while true; do
+    ask "$variable" "$prompt" "$default"
+    value=${!variable}
+    for choice in "$@"; do
+      [ "$value" = "$choice" ] && return 0
+    done
+    reject_input "$variable" "$variable must be one of: $allowed."
+  done
+}
+
+ask_yes_no() {
+  local variable=$1 prompt=$2 default=$3 value
+  while true; do
+    ask "$variable" "$prompt" "$default"
+    value=${!variable}
+    case "$value" in
+      y|Y|yes|YES|true|1) printf -v "$variable" '%s' yes; return 0 ;;
+      n|N|no|NO|false|0) printf -v "$variable" '%s' no; return 0 ;;
+      *) reject_input "$variable" "$variable must be yes or no." ;;
+    esac
+  done
+}
+
+ask_matching() {
+  local variable=$1 prompt=$2 default=$3 pattern=$4 message=$5 value
+  while true; do
+    ask "$variable" "$prompt" "$default"
+    value=${!variable}
+    [[ "$value" =~ $pattern ]] && return 0
+    reject_input "$variable" "$message"
+  done
 }
 
 is_yes() {
@@ -55,32 +115,16 @@ write_env() {
 }
 
 configure_service_user() {
-  ask BRIAN_USER "Dedicated service user" brian
-  [[ "$BRIAN_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || {
-    echo "BRIAN_USER must be a valid lowercase Linux system username." >&2
-    exit 1
-  }
+  ask_matching BRIAN_USER "Dedicated service user" brian '^[a-z_][a-z0-9_-]{0,31}$' \
+    "BRIAN_USER must be a valid lowercase Linux system username."
   BRIAN_GROUP=$BRIAN_USER
 }
 
-normalize_yes_no() {
-  local variable=$1 value=${!1}
-  case "$value" in
-    y|Y|yes|YES|true|1) printf -v "$variable" '%s' yes ;;
-    n|N|no|NO|false|0) printf -v "$variable" '%s' no ;;
-    *) echo "$variable must be yes or no." >&2; exit 1 ;;
-  esac
-}
-
 configure_connectors() {
-  ask ENABLE_DISCORD "Enable Discord connector? (yes/no)" yes
-  ask ENABLE_WHATSAPP "Enable WhatsApp connector? (yes/no)" yes
-  ask ENABLE_WECHAT "Enable WeChat connector? (yes/no)" yes
-  ask ENABLE_FEISHU "Enable Feishu connector? (yes/no)" yes
-  normalize_yes_no ENABLE_DISCORD
-  normalize_yes_no ENABLE_WHATSAPP
-  normalize_yes_no ENABLE_WECHAT
-  normalize_yes_no ENABLE_FEISHU
+  ask_yes_no ENABLE_DISCORD "Enable Discord connector? (yes/no)" yes
+  ask_yes_no ENABLE_WHATSAPP "Enable WhatsApp connector? (yes/no)" yes
+  ask_yes_no ENABLE_WECHAT "Enable WeChat connector? (yes/no)" yes
+  ask_yes_no ENABLE_FEISHU "Enable Feishu connector? (yes/no)" yes
 }
 
 install_systemd_unit() {
@@ -93,7 +137,8 @@ install_systemd_unit() {
 }
 
 configure_model_provider() {
-  ask MODEL_PROVIDER "Primary model provider (gemini/vertex/dashscope/openai-codex)" gemini
+  ask_choice MODEL_PROVIDER "Primary model provider (gemini/vertex/dashscope/openai-codex)" gemini \
+    gemini vertex dashscope openai-codex
   case "$MODEL_PROVIDER" in
     gemini)
       ask_secret GEMINI_API_KEY "Gemini API key"
@@ -111,10 +156,6 @@ configure_model_provider() {
       ;;
     openai-codex)
       USEBRIAN_PREFERRED_PROVIDER=openai-codex
-      ;;
-    *)
-      echo "MODEL_PROVIDER must be gemini, vertex, dashscope, or openai-codex." >&2
-      exit 1
       ;;
   esac
 }
@@ -140,24 +181,35 @@ write_model_provider_env() {
 
 validate_external_postgres() {
   local database_url=$1 database_url_app=$2 require_tls=${3:-true}
-  local query sslmode parameter version extension_count owner_role app_role flags
+  local query sslmode parameter version extension_count owner_role app_role flags url
   local owner_database app_database dangerous_memberships
   local -a parameters
 
   if [ "$require_tls" = true ]; then
+    local tls_enforced=true
     for url in "$database_url" "$database_url_app"; do
       query=${url#*\?}
-      [ "$query" != "$url" ] || { echo "External database URLs require sslmode." >&2; exit 1; }
       sslmode=
-      IFS='&' read -r -a parameters <<< "$query"
-      for parameter in "${parameters[@]}"; do
-        if [ "${parameter%%=*}" = sslmode ]; then sslmode=${parameter#*=}; fi
-      done
+      if [ "$query" != "$url" ]; then
+        IFS='&' read -r -a parameters <<< "$query"
+        for parameter in "${parameters[@]}"; do
+          if [ "${parameter%%=*}" = sslmode ]; then sslmode=${parameter#*=}; fi
+        done
+      fi
       case "$sslmode" in
         require|verify-ca|verify-full) ;;
-        *) echo "External database sslmode must enforce TLS." >&2; exit 1 ;;
+        *) tls_enforced=false ;;
       esac
     done
+    if [ "$tls_enforced" = false ]; then
+      ask_yes_no ALLOW_INSECURE_EXTERNAL_POSTGRES \
+        "TLS is not enforced for every external PostgreSQL URL. Continue insecurely? (yes/no)" no
+      [ "$ALLOW_INSECURE_EXTERNAL_POSTGRES" = yes ] || {
+        echo "External database connection declined because TLS is not enforced." >&2
+        exit 1
+      }
+      echo "WARNING: Continuing with an external PostgreSQL connection that does not enforce TLS." >&2
+    fi
   fi
 
   version=$(psql "$database_url" -Atc 'SHOW server_version_num')
@@ -195,14 +247,13 @@ public_host_from_url() {
 configure_reverse_proxy() {
   local host port
   local -A configured_hosts=()
-  ask REVERSE_PROXY_SETUP "Reverse proxy setup (default/custom)" default
+  ask_choice REVERSE_PROXY_SETUP "Reverse proxy setup (default/custom)" default default custom
   case "$REVERSE_PROXY_SETUP" in
     custom)
       echo "Reverse proxy left to the operator. Keep application ports private and publish only HTTPS/WSS."
       return 0
       ;;
     default) ;;
-    *) echo "REVERSE_PROXY_SETUP must be default or custom." >&2; exit 1 ;;
   esac
 
   [ $(( $# % 2 )) -eq 0 ] || { echo "Reverse proxy routes must be URL/port pairs." >&2; exit 1; }

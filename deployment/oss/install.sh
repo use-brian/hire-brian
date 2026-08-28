@@ -29,19 +29,16 @@ cleanup_partial_install() {
 trap cleanup_partial_install EXIT
 
 configure_service_user
-ask INSTALL_POSTGRES "Install PostgreSQL 18 and pgvector locally? (yes/no)" yes
-ask INSTALL_BROWSER "Install Chromium, Xfce, Xvfb, and local-only VNC? (yes/no)" no
-ask INSTALL_LIBREOFFICE "Install headless LibreOffice for PDF exports? (yes/no)" yes
+ask_yes_no INSTALL_POSTGRES "Install PostgreSQL 18 and pgvector locally? (yes/no)" yes
+ask_yes_no INSTALL_BROWSER "Install Chromium, Xfce, Xvfb, and local-only VNC? (yes/no)" no
+ask_yes_no INSTALL_LIBREOFFICE "Install headless LibreOffice for PDF exports? (yes/no)" yes
 configure_connectors
 ask BRIAN_REPO "Use Brian repository" "https://github.com/use-brian/use-brian.git"
 ask BRIAN_REF "Git branch, tag, or commit" main
-ask APP_URL "Public HTTPS application URL"
-ask API_URL "Public HTTPS API URL"
-ask DOC_SYNC_PUBLIC_URL "Public secure doc-sync WebSocket URL (wss://...)"
-case "$APP_URL $API_URL $DOC_SYNC_PUBLIC_URL" in
-  https://*\ https://*\ wss://*) ;;
-  *) echo "Production URLs must use https:// for app/API and wss:// for doc-sync." >&2; exit 1 ;;
-esac
+ask_matching APP_URL "Public HTTPS application URL" '' '^https://[^[:space:]]+$' "Application URL must use https://."
+ask_matching API_URL "Public HTTPS API URL" '' '^https://[^[:space:]]+$' "API URL must use https://."
+ask_matching DOC_SYNC_PUBLIC_URL "Public secure doc-sync WebSocket URL (wss://...)" '' '^wss://[^[:space:]]+$' \
+  "Document-sync URL must use wss://."
 if [ -z "${COOKIE_DOMAIN+x}" ]; then
   if [ "$NONINTERACTIVE" = 1 ]; then COOKIE_DOMAIN=""; else read -r -p "Cookie domain (leave blank for host-only cookies): " COOKIE_DOMAIN; fi
 fi

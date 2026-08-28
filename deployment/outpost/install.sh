@@ -21,7 +21,7 @@ cleanup_partial() {
 trap cleanup_partial EXIT
 
 configure_service_user
-ask OUTPOST_SOURCE_MODE "Outpost source mode (repository/directory)" repository
+ask_choice OUTPOST_SOURCE_MODE "Outpost source mode (repository/directory)" repository repository directory
 case "$OUTPOST_SOURCE_MODE" in
   repository)
     ask BRIAN_REPO "Use Brian repository" "https://github.com/use-brian/use-brian.git"
@@ -37,43 +37,40 @@ case "$OUTPOST_SOURCE_MODE" in
     done
     BRIAN_REPO=; BRIAN_REF=
     ;;
-  *) echo "OUTPOST_SOURCE_MODE must be repository or directory." >&2; exit 1 ;;
 esac
 detected_ssh_port=22
 if [ -n "${SSH_CONNECTION:-}" ]; then detected_ssh_port=${SSH_CONNECTION##* }; fi
-ask SSH_PORT "SSH server port to preserve in UFW" "$detected_ssh_port"
-ask INSTALL_POSTGRES "Install PostgreSQL 18 and pgvector locally? (yes/no)" yes
-ask INSTALL_LIBREOFFICE "Install headless LibreOffice for PDF exports? (yes/no)" yes
-ask INSTALL_BROWSER "Install Chromium, Xfce, Xvfb, and local-only VNC? (yes/no)" no
+while true; do
+  ask SSH_PORT "SSH server port to preserve in UFW" "$detected_ssh_port"
+  [[ "$SSH_PORT" =~ ^[0-9]+$ ]] && [ "$SSH_PORT" -ge 1 ] && [ "$SSH_PORT" -le 65535 ] && break
+  reject_input SSH_PORT "SSH_PORT must be an integer between 1 and 65535."
+done
+ask_yes_no INSTALL_POSTGRES "Install PostgreSQL 18 and pgvector locally? (yes/no)" yes
+ask_yes_no INSTALL_LIBREOFFICE "Install headless LibreOffice for PDF exports? (yes/no)" yes
+ask_yes_no INSTALL_BROWSER "Install Chromium, Xfce, Xvfb, and local-only VNC? (yes/no)" no
 configure_connectors
-ask APP_URL "Public HTTPS application origin"
-ask API_URL "Public HTTPS API origin"
-ask AUTH_PORTAL_URL "Public HTTPS authentication origin"
-ask DOC_SYNC_PUBLIC_URL "Public WSS document-sync origin"
-case "$APP_URL $API_URL $AUTH_PORTAL_URL $DOC_SYNC_PUBLIC_URL" in
-  https://*\ https://*\ https://*\ wss://*) ;;
-  *) echo "App, API and auth require HTTPS; doc-sync requires WSS." >&2; exit 1 ;;
-esac
-ask COOKIE_DOMAIN "Isolated cookie domain (for example .customer.example)"
-case "$COOKIE_DOMAIN" in .?*.?*) ;; *) echo "COOKIE_DOMAIN must be a dot-prefixed isolated domain." >&2; exit 1 ;; esac
-ask TRUST_PROXY_HEADERS "Trust sanitized proxy client-IP headers? (true/false)" false
-case "$TRUST_PROXY_HEADERS" in true|false) ;; *) echo "TRUST_PROXY_HEADERS must be true or false." >&2; exit 1 ;; esac
+ask_matching APP_URL "Public HTTPS application origin" '' '^https://[^[:space:]]+$' "Application origin must use https://."
+ask_matching API_URL "Public HTTPS API origin" '' '^https://[^[:space:]]+$' "API origin must use https://."
+ask_matching AUTH_PORTAL_URL "Public HTTPS authentication origin" '' '^https://[^[:space:]]+$' "Authentication origin must use https://."
+ask_matching DOC_SYNC_PUBLIC_URL "Public WSS document-sync origin" '' '^wss://[^[:space:]]+$' "Document-sync origin must use wss://."
+ask_matching COOKIE_DOMAIN "Isolated cookie domain (for example .customer.example)" '' '^\.[^.[:space:]]+(\.[^.[:space:]]+)+$' \
+  "COOKIE_DOMAIN must be a dot-prefixed isolated domain."
+ask_choice TRUST_PROXY_HEADERS "Trust sanitized proxy client-IP headers? (true/false)" false true false
 configure_model_provider
 
-ask OUTPOST_AUTH_METHOD "Authentication method (email/oidc)" email
+ask_choice OUTPOST_AUTH_METHOD "Authentication method (email/oidc)" email email oidc
 ask OUTPOST_AUTH_BOOTSTRAP_EMAILS "Bootstrap administrator email"
 case "$OUTPOST_AUTH_METHOD" in
   email)
     SMTP_USER=${SMTP_USER:-${GMAIL_SMTP_USER:-}}
     SMTP_PASSWORD=${SMTP_PASSWORD:-${GMAIL_SMTP_APP_PASSWORD:-}}
     ask SMTP_HOST "SMTP server host" smtp.gmail.com
-    ask SMTP_PORT "SMTP server port" 587
-    [[ "$SMTP_PORT" =~ ^[0-9]+$ ]] && [ "$SMTP_PORT" -ge 1 ] && [ "$SMTP_PORT" -le 65535 ] || {
-      echo "SMTP_PORT must be an integer between 1 and 65535." >&2
-      exit 1
-    }
-    ask SMTP_SECURE "Use implicit SMTP TLS? (true for port 465, false for STARTTLS)" false
-    case "$SMTP_SECURE" in true|false) ;; *) echo "SMTP_SECURE must be true or false." >&2; exit 1 ;; esac
+    while true; do
+      ask SMTP_PORT "SMTP server port" 587
+      [[ "$SMTP_PORT" =~ ^[0-9]+$ ]] && [ "$SMTP_PORT" -ge 1 ] && [ "$SMTP_PORT" -le 65535 ] && break
+      reject_input SMTP_PORT "SMTP_PORT must be an integer between 1 and 65535."
+    done
+    ask_choice SMTP_SECURE "Use implicit SMTP TLS? (true for port 465, false for STARTTLS)" false true false
     ask SMTP_USER "SMTP account"
     ask_secret SMTP_PASSWORD "SMTP password"
     ask EMAIL_FROM_ADDRESS "Email from address" "$SMTP_USER"
@@ -87,7 +84,6 @@ case "$OUTPOST_AUTH_METHOD" in
     OUTPOST_AUTH_BRIDGE_SECRET=${OUTPOST_AUTH_BRIDGE_SECRET:-$(random_secret)}
     OUTPOST_AUTH_EMAIL_ENABLED=false; OUTPOST_AUTH_OIDC_ENABLED=true
     ;;
-  *) echo "Authentication method must be email or oidc." >&2; exit 1 ;;
 esac
 
 echo ">> Installing native runtime and build dependencies"
