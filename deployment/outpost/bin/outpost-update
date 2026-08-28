@@ -65,7 +65,7 @@ runuser -u "$BRIAN_USER" -- env HOME="$data" \
     set -euo pipefail
     cd "$1"
     corepack pnpm install --frozen-lockfile --prod=false
-    NODE_ENV=production corepack pnpm turbo run build \
+    NODE_ENV=production corepack pnpm turbo run build --concurrency=1 \
       --filter=@use-brian/api-open \
       --filter=@use-brian/auth-web \
       --filter=app-web \
