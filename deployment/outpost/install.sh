@@ -251,12 +251,12 @@ systemctl enable "${outpost_units[@]}"
 if is_yes "$INSTALL_BROWSER"; then systemctl enable use-brian-outpost-browser-desktop.service; fi
 
 ufw allow "$SSH_PORT/tcp"; ufw default deny incoming; ufw default allow outgoing; ufw --force enable
-install_complete=1
-outpost-update
-if is_yes "$INSTALL_BROWSER"; then systemctl start use-brian-outpost-browser-desktop.service; fi
 configure_reverse_proxy \
   "$APP_URL" 3003 \
   "$API_URL" 4000 \
   "$AUTH_PORTAL_URL" 3005 \
   "$DOC_SYNC_PUBLIC_URL" 8080
+install_complete=1
+outpost-update
+if is_yes "$INSTALL_BROWSER"; then systemctl start use-brian-outpost-browser-desktop.service; fi
 echo "Native Outpost installation complete."
