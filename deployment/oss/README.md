@@ -58,7 +58,7 @@ Discord, WhatsApp, WeChat, and Feishu are independently optional. A disabled con
 
 `REVERSE_PROXY_SETUP` defaults to `default`: it installs Caddy, requires distinct app/API/doc-sync hostnames, enables automatic TLS/WebSockets, and opens host UFW ports 80/443. `custom` leaves ingress unchanged. DNS and cloud firewall rules remain operator responsibilities.
 
-External preflight requires TLS `sslmode=require`, `verify-ca`, or `verify-full`; PostgreSQL 18.x; `vector` and `pg_trgm`; the same database with distinct roles; and an application role that is `NOSUPERUSER`, `NOBYPASSRLS`, and inherits no privileged role.
+External preflight expects TLS `sslmode=require`, `verify-ca`, or `verify-full`; PostgreSQL 18.x; `vector` and `pg_trgm`; the same database with distinct roles; and an application role that is `NOSUPERUSER`, `NOBYPASSRLS`, and inherits no privileged role. If either URL does not enforce TLS, the installer requires explicit approval; noninteractive installs must set `ALLOW_INSECURE_EXTERNAL_POSTGRES=yes`.
 
 `INSTALL_LIBREOFFICE=yes` installs only the headless Writer, Calc, and Impress components. Brian invokes `soffice --headless` when exporting its documents, presentations, spreadsheets, or `renderPdf` output to PDF. It is not needed to start the services; select `no` if PDF generation is not required.
 

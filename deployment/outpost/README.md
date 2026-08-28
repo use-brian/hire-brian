@@ -90,7 +90,7 @@ Production uses two PostgreSQL roles:
 - `DATABASE_URL`: owner role for migrations and system operations.
 - `DATABASE_URL_APP`: distinct `NOSUPERUSER`, `NOBYPASSRLS` role for user-scoped queries.
 
-Local setup installs PostgreSQL 18 and pgvector, creates both roles, and grants current/default privileges. External URLs must enforce TLS with `sslmode=require`, `verify-ca`, or `verify-full`, target the same PostgreSQL 18.x database with distinct roles, and have `vector`/`pg_trgm`. The application role must be unprivileged and inherit no privileged role; the owner must be able to grant object privileges.
+Local setup installs PostgreSQL 18 and pgvector, creates both roles, and grants current/default privileges. External URLs should enforce TLS with `sslmode=require`, `verify-ca`, or `verify-full`, target the same PostgreSQL 18.x database with distinct roles, and have `vector`/`pg_trgm`. If either URL does not enforce TLS, the installer requires explicit approval; noninteractive installs must set `ALLOW_INSECURE_EXTERNAL_POSTGRES=yes`. The application role must be unprivileged and inherit no privileged role; the owner must be able to grant object privileges.
 
 This installer provisions a fresh Outpost database entirely from standalone `use-brian`.
 
