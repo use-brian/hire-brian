@@ -45,7 +45,7 @@ The installer asks for:
 - Independent enable/disable choices for Discord, WhatsApp, WeChat, and Feishu connectors.
 - The SSH port UFW must preserve.
 
-It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt.
+It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt. Release builds run serially to limit peak memory use; provision at least 8 GB RAM as documented by the Terraform configurations, and add swap before installation on memory-constrained hosts.
 
 Important defaults are `BRIAN_USER=brian`, `OUTPOST_SOURCE_MODE=repository`, `INSTALL_POSTGRES=yes`, `INSTALL_LIBREOFFICE=yes`, `INSTALL_BROWSER=no`, all four `ENABLE_*` connector values `yes`, and `REVERSE_PROXY_SETUP=default`. For noninteractive installation set `NONINTERACTIVE=1` and pass variables from `outpost.env.example` through `sudo env`; the installer does not read that file automatically.
 
