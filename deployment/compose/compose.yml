@@ -1,0 +1,227 @@
+name: use-brian
+
+x-platform-service: &platform-service
+  image: use-brian/platform:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      BRIAN_REPO: ${BRIAN_REPO:-https://github.com/use-brian/use-brian.git}
+      BRIAN_REF: ${BRIAN_REF:-main}
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
+      NEXT_PUBLIC_DOC_SYNC_URL: wss://${DOC_SYNC_DOMAIN}
+      NEXT_PUBLIC_USEBRIAN_EDITION: oss
+  restart: unless-stopped
+  init: true
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  init: true
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: brian
+      POSTGRES_USER: brian
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-use-brian.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brian -d brian"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *platform-service
+    command: ["pnpm", "--filter", "@use-brian/api", "migrate"]
+    environment:
+      DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  grant-app-role:
+    image: pgvector/pgvector:pg18
+    command: ["psql", "--set=ON_ERROR_STOP=1", "--file=/scripts/grant-app-role.sql"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: brian
+      PGUSER: brian
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./grant-app-role.sql:/scripts/grant-app-role.sql:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    <<: *platform-service
+    command: ["node", "apps/api/dist/index.js"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      HOME: /data
+      USEBRIAN_EDITION: oss
+      DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
+      DATABASE_URL_APP: postgresql://app_user:${APP_DATABASE_PASSWORD}@postgres:5432/brian
+      APP_URL: https://${APP_DOMAIN}
+      AUTHED_APP_URL: https://${APP_DOMAIN}
+      API_URL: https://${API_DOMAIN}
+      WEBHOOK_BASE_URL: https://${API_DOMAIN}
+      DOC_SYNC_URL: http://doc-sync:8080
+      BROWSER_RELAY_URL: https://${RELAY_DOMAIN}
+      DISCORD_CONNECTOR_URL: http://discord-connector:8080
+      WA_CONNECTOR_URL: http://wa-connector:8080
+      WECHAT_CONNECTOR_URL: http://wechat-connector:8080
+      FEISHU_CONNECTOR_URL: http://feishu-connector:8080
+      LOCAL_FILES_DIR: /data/files
+    volumes:
+      - brian-data:/data
+    depends_on:
+      grant-app-role:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  app-web:
+    <<: *platform-service
+    command: ["pnpm", "--filter", "app-web", "start"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3003"
+      API_URL: http://api:4000
+      AUTHED_APP_URL: https://${APP_DOMAIN}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  doc-sync:
+    <<: *service-defaults
+    image: ghcr.io/use-brian/doc-sync:${BRIAN_IMAGE_TAG:-latest}
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
+      DATABASE_URL_APP: postgresql://app_user:${APP_DATABASE_PASSWORD}@postgres:5432/brian
+      API_INTERNAL_URL: http://api:4000
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  browser-relay:
+    <<: *service-defaults
+    image: ghcr.io/use-brian/browser-relay:${BRIAN_IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET}
+      BROWSER_RELAY_SECRET: ${BROWSER_RELAY_SECRET}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  discord-connector:
+    <<: *service-defaults
+    image: ghcr.io/use-brian/discord-connector:${BRIAN_IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      USEBRIAN_API_URL: http://api:4000
+      DISCORD_CONNECTOR_SECRET: ${DISCORD_CONNECTOR_SECRET}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  wa-connector:
+    <<: *service-defaults
+    image: ghcr.io/use-brian/wa-connector:${BRIAN_IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      USEBRIAN_API_URL: http://api:4000
+      DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
+      WA_CONNECTOR_SECRET: ${WA_CONNECTOR_SECRET}
+      WA_LOCAL_CREDS_DIR: /data
+    volumes:
+      - whatsapp-data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+  wechat-connector:
+    <<: *service-defaults
+    image: ghcr.io/use-brian/wechat-connector:${BRIAN_IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      USEBRIAN_API_URL: http://api:4000
+      WECHAT_CONNECTOR_SECRET: ${WECHAT_CONNECTOR_SECRET}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  feishu-connector:
+    <<: *service-defaults
+    image: ghcr.io/use-brian/feishu-connector:${BRIAN_IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      USEBRIAN_API_URL: http://api:4000
+      FEISHU_CONNECTOR_SECRET: ${FEISHU_CONNECTOR_SECRET}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      DOC_SYNC_DOMAIN: ${DOC_SYNC_DOMAIN}
+      RELAY_DOMAIN: ${RELAY_DOMAIN}
+      OWNER_USERNAME: ${OWNER_USERNAME}
+      OWNER_PASSWORD_HASH: ${OWNER_PASSWORD_HASH}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      app-web:
+        condition: service_started
+      doc-sync:
+        condition: service_healthy
+      browser-relay:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  brian-data:
+  whatsapp-data:
+  caddy-data:
+  caddy-config:
