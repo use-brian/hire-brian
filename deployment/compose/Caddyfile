@@ -1,0 +1,31 @@
+{$APP_DOMAIN} {
+	@owner_session {
+		path_regexp owner_session_path (?i)^/api/auth/local-session/?$
+	}
+	basic_auth @owner_session {
+		{$OWNER_USERNAME} {$OWNER_PASSWORD_HASH}
+	}
+
+	encode zstd gzip
+	reverse_proxy app-web:3003
+}
+
+{$API_DOMAIN} {
+	# The browser enters through app-web's protected route. Only that server may
+	# call the API's local-owner token endpoint over the private Compose network.
+	@local_session {
+		path_regexp local_session_path (?i)^/auth/local-session/?$
+	}
+	respond @local_session 404
+
+	encode zstd gzip
+	reverse_proxy api:4000
+}
+
+{$DOC_SYNC_DOMAIN} {
+	reverse_proxy doc-sync:8080
+}
+
+{$RELAY_DOMAIN} {
+	reverse_proxy browser-relay:8080
+}
