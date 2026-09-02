@@ -4,11 +4,11 @@ This target installs the public Use Brian OSS edition as containers. It is an
 alternative to `deployment/oss/install.sh`, not an additional layer on top of
 the native systemd installation. Do not run both against the same database.
 
-The core API and app-web image is built from `BRIAN_REPO` at `BRIAN_REF` so the
-browser-facing URLs can be embedded during the Next.js build. Doc sync, browser
-relay, and the channel connectors use versioned images from
-`ghcr.io/use-brian`. PostgreSQL 18, migrations, RLS grants, and Caddy HTTPS are
-part of the stack.
+API, app-web, doc sync, browser relay, and channel connectors use matching
+versioned images from `ghcr.io/use-brian`. app-web reads its public domains from
+the container environment and injects an allowlisted configuration into the
+initial HTML, so the same image can run on different domains without rebuilding.
+PostgreSQL 18, migrations, RLS grants, and Caddy HTTPS are part of the stack.
 
 ## Requirements
 
@@ -41,8 +41,8 @@ COOKIE_DOMAIN=.example.com \
 ```
 
 The installer creates a mode-`0600` `.env`, generates independent database,
-JWT, connector, and encryption secrets, builds the selected Use Brian ref, and
-starts the stack. It prints a generated owner password once; Caddy requires
+JWT, connector, and encryption secrets, pulls the selected image tag, and starts
+the stack. It prints a generated owner password once; Caddy requires
 that credential on the owner-session route and blocks direct public access to
 the backend token endpoint. When run interactively, omitted hostnames and the
 cookie domain are prompted for. The default model path is ChatGPT/Codex sign-in
@@ -55,16 +55,19 @@ For a manual install:
 ```bash
 cp .env.example .env
 # Set domains and replace every replace-* value.
+# Database passwords must be URI-safe (hex is recommended).
 # Generate OWNER_PASSWORD_HASH with:
 # docker run --rm caddy:2-alpine caddy hash-password --plaintext 'choose-a-password'
+# Keep the generated bcrypt hash inside single quotes in .env.
 chmod 600 .env
-docker compose up -d --build
+docker compose pull
+bash ./verify-images.sh
+docker compose up -d
 ```
 
 Open `https://$APP_DOMAIN` after `api` and `doc-sync` report healthy and the
 `caddy` container is running. Enter the owner credential when the browser first
-opens the session route. The first build clones and compiles the core
-application and can take several minutes.
+opens the session route.
 
 ## Services
 
@@ -92,16 +95,30 @@ docker compose logs -f caddy
 docker compose restart api
 ```
 
-To update, edit `BRIAN_REF` and `BRIAN_IMAGE_TAG` in `.env`. Pin both to a
-release tag for reproducibility. Rebuild the source image without the cached
-Git fetch, pull all upstream images, and recreate the services. Back up the
-volumes first, especially before a PostgreSQL image update:
+To update, edit `BRIAN_IMAGE_TAG` in `.env`. Use a release or `sha-*` tag;
+`update.sh` refuses mutable `latest`, `main`, and `develop` tags because updates
+run forward-only migrations. Back up the volumes first, especially before a
+PostgreSQL image update:
 
 ```bash
-docker compose build --pull --no-cache migrate
-docker compose pull postgres caddy doc-sync browser-relay discord-connector wa-connector wechat-connector feishu-connector
-docker compose up -d
+bash ./update.sh
 ```
+
+The verifier compares the OCI source-revision label on every Use Brian image
+and refuses a mixed application set under one tag.
+
+`update.sh` pulls and verifies images before downtime, then stops Caddy and all
+old application writers before migrations run. If migration or grant execution
+fails, writers remain stopped. Inspect the migration logs and restore the
+pre-update database backup when required; do not restart old code against a
+partially advanced schema.
+
+### Migrating from the source-built Compose target
+
+Older Compose installations pinned core source with `BRIAN_REF` while
+`BRIAN_IMAGE_TAG` selected only component images. The published-image target
+ignores `BRIAN_REF`. Before the first update, map that source revision to a
+published release or `sha-*` image tag and set `BRIAN_IMAGE_TAG` explicitly.
 
 The `postgres-data`, `brian-data`, and `whatsapp-data` volumes are durable.
 Back them up together with `.env`; losing `.env` makes encrypted connector and

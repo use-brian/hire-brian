@@ -1,19 +1,5 @@
 name: use-brian
 
-x-platform-service: &platform-service
-  image: use-brian/platform:local
-  build:
-    context: .
-    dockerfile: Dockerfile
-    args:
-      BRIAN_REPO: ${BRIAN_REPO:-https://github.com/use-brian/use-brian.git}
-      BRIAN_REF: ${BRIAN_REF:-main}
-      NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
-      NEXT_PUBLIC_DOC_SYNC_URL: wss://${DOC_SYNC_DOMAIN}
-      NEXT_PUBLIC_USEBRIAN_EDITION: oss
-  restart: unless-stopped
-  init: true
-
 x-service-defaults: &service-defaults
   restart: unless-stopped
   init: true
@@ -37,8 +23,9 @@ services:
     restart: unless-stopped
 
   migrate:
-    <<: *platform-service
-    command: ["pnpm", "--filter", "@use-brian/api", "migrate"]
+    <<: *service-defaults
+    image: ghcr.io/use-brian/api:${BRIAN_IMAGE_TAG:-latest}
+    command: ["packages/api/node_modules/.bin/tsx", "packages/api/scripts/migrate.ts"]
     environment:
       DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
     depends_on:
@@ -62,8 +49,8 @@ services:
     restart: "no"
 
   api:
-    <<: *platform-service
-    command: ["node", "apps/api/dist/index.js"]
+    <<: *service-defaults
+    image: ghcr.io/use-brian/api:${BRIAN_IMAGE_TAG:-latest}
     env_file: .env
     environment:
       NODE_ENV: production
@@ -95,14 +82,30 @@ services:
       retries: 30
 
   app-web:
-    <<: *platform-service
-    command: ["pnpm", "--filter", "app-web", "start"]
-    env_file: .env
+    <<: *service-defaults
+    image: ghcr.io/use-brian/app-web:${BRIAN_IMAGE_TAG:-latest}
     environment:
       NODE_ENV: production
       PORT: "3003"
+      INTERNAL_API_URL: http://api:4000
       API_URL: http://api:4000
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      DOC_SYNC_DOMAIN: ${DOC_SYNC_DOMAIN}
+      APP_URL: https://${APP_DOMAIN}
       AUTHED_APP_URL: https://${APP_DOMAIN}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
+      USEBRIAN_EDITION: oss
+      APP_HOSTS: ${APP_HOSTS:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_PROJECT_NUMBER: ${GOOGLE_PROJECT_NUMBER:-}
+      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
+      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}
+      FATHOM_CLIENT_ID: ${FATHOM_CLIENT_ID:-}
+      FATHOM_CLIENT_SECRET: ${FATHOM_CLIENT_SECRET:-}
+      SHOPIFY_CLIENT_ID: ${SHOPIFY_CLIENT_ID:-}
+      SHOPIFY_CLIENT_SECRET: ${SHOPIFY_CLIENT_SECRET:-}
     depends_on:
       api:
         condition: service_healthy
@@ -110,12 +113,13 @@ services:
   doc-sync:
     <<: *service-defaults
     image: ghcr.io/use-brian/doc-sync:${BRIAN_IMAGE_TAG:-latest}
-    env_file: .env
     environment:
       NODE_ENV: production
       PORT: "8080"
       DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
       DATABASE_URL_APP: postgresql://app_user:${APP_DATABASE_PASSWORD}@postgres:5432/brian
+      JWT_SECRET: ${JWT_SECRET}
+      DOC_SYNC_SECRET: ${DOC_SYNC_SECRET}
       API_INTERNAL_URL: http://api:4000
     depends_on:
       api:
@@ -138,6 +142,11 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   discord-connector:
     <<: *service-defaults
@@ -212,11 +221,11 @@ services:
       api:
         condition: service_healthy
       app-web:
-        condition: service_started
+        condition: service_healthy
       doc-sync:
         condition: service_healthy
       browser-relay:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

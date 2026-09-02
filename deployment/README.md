@@ -1,6 +1,6 @@
 # Deployment targets
 
-- `compose/`: Docker Compose installation of the public OSS edition, with local PostgreSQL 18, Caddy HTTPS, a source-built core image, and published GHCR component images.
+- `compose/`: Docker Compose installation of the public OSS edition, with local PostgreSQL 18, Caddy HTTPS, and published GHCR application images.
 - `oss/`: native Debian 12/13 installation of the public Use Brian OSS edition.
 - `outpost/`: native Debian 12/13 Outpost installation using `OUTPOST_SOURCE_MODE=repository` with `BRIAN_REPO`/`BRIAN_REF`, or `OUTPOST_SOURCE_MODE=directory` with `OUTPOST_SOURCE_DIR`.
 
