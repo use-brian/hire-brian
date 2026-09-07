@@ -5,3 +5,6 @@
 !*.tfvars.example
 .terraform.lock.hcl
 crash.log
+deployment/compose/.env
+deployment/compose/.env.install.*
+deployment/compose/outpost.env
