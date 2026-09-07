@@ -1,113 +1,229 @@
-# Docker Compose OSS deployment
+# Docker Compose
 
-This target installs the public Use Brian OSS edition as containers. It is an
-alternative to `deployment/oss/install.sh`, not an additional layer on top of
-the native systemd installation. Do not run both against the same database.
+Published-image deployment of Use Brian with PostgreSQL 18/pgvector. The default
+OSS mode is a **local, loopback-only installation**, with no reverse proxy,
+public 80/443 listeners, tunnel, or Basic Auth gate. Optional Outpost mode adds
+`auth-web` and uses HTTPS supplied by **your external reverse proxy**.
 
-The core API and app-web image is built from `BRIAN_REPO` at `BRIAN_REF` so the
-browser-facing URLs can be embedded during the Next.js build. Doc sync, browser
-relay, and the channel connectors use versioned images from
-`ghcr.io/use-brian`. PostgreSQL 18, migrations, RLS grants, and Caddy HTTPS are
-part of the stack.
+Do not run this target and a native installer against the same database.
+Both Compose modes use project `use-brian` and the same durable `postgres-data`,
+`brian-data`, and `whatsapp-data` volumes. Switching modes does not migrate the
+OSS owner's identity or transfer their data to an Outpost user/workspace.
 
-## Requirements
+## Release Requirements
 
-- An amd64 Linux host with at least 4 CPU, 8 GB RAM, and 30 GB free disk.
-- Docker Engine 24 or newer with Docker Compose v2.
-- Ports TCP 80/443 and UDP 443 open to the host.
-- Four DNS names pointing to the host: app, API, document sync, and browser
-  relay. They must be distinct and share one cookie-domain suffix. Caddy
-  obtains and renews their TLS certificates.
-- Anonymous pull access to the `ghcr.io/use-brian` component packages. After
-  the first CI publish, an organization owner must make each package public.
-  For private packages, pass `GHCR_USERNAME` and a read-packages `GHCR_TOKEN`
-  to `install.sh`.
+This deployment consumes the official images published to GitHub Container
+Registry (GHCR). Once a release is published, select its tag with
+`BRIAN_IMAGE_TAG`; no application source checkout or local image build is needed.
 
-The published component images currently target amd64. Use the native OSS
-installer for arm64 hosts.
+- Docker Engine with Compose v2 supporting multiple `--env-file` flags and `up --wait`, plus Bash and Python 3 on the host.
+- Access to matching `ghcr.io/use-brian/{api,app-web,doc-sync,browser-relay,discord-connector,wa-connector,wechat-connector,feishu-connector}` images. Prefer a release or `sha-*` tag in `BRIAN_IMAGE_TAG`.
+- Outpost additionally uses `ghcr.io/use-brian/auth-web` at the same tag and source revision. The publishing workflow includes this image, and the deployment scripts pull and verify it along with the other selected services before stopping applications.
+- The selected release must support runtime `PUBLIC_APP_URL`, `PUBLIC_API_URL`, `PUBLIC_DISPLAY_API_URL`, `PUBLIC_DOC_SYNC_URL`, and `PUBLIC_PRIMARY_AUTH_URL`. These are direct URLs, including scheme and local ports, not build-time hostname substitutions.
+- Localhost deployment requires the app-web empty-cookie-domain fix `ff0ec379` in the selected release so the default empty `COOKIE_DOMAIN` works correctly.
+- Outpost requires the primary auth redirect fix `ac41f62b` in the selected release so app-web redirects to the configured `PUBLIC_PRIMARY_AUTH_URL`.
+- The selected Outpost release must include the auth portal cookie-domain fix accepting a portal such as `auth.example.com` with `COOKIE_DOMAIN=.example.com`. Configuration cannot fix an older release that rejects that combination. No second-level subdomains are needed.
 
-## Install
+The verifier checks every selected application image's OCI source-revision
+label, including auth-web in Outpost mode. Matching labels do not prove runtime
+feature support, image authenticity, working SMTP/OIDC credentials, or DNS/TLS.
+Authenticate to GHCR separately with `docker login ghcr.io` if packages require
+it; no registry credentials belong in the Compose examples.
 
-From a clone of `hire-brian`:
+## Local OSS Install
 
-```bash
-cd deployment/compose
-APP_DOMAIN=app.example.com \
-API_DOMAIN=api.example.com \
-DOC_SYNC_DOMAIN=docs.example.com \
-RELAY_DOMAIN=relay.example.com \
-COOKIE_DOMAIN=.example.com \
-./install.sh
-```
-
-The installer creates a mode-`0600` `.env`, generates independent database,
-JWT, connector, and encryption secrets, builds the selected Use Brian ref, and
-starts the stack. It prints a generated owner password once; Caddy requires
-that credential on the owner-session route and blocks direct public access to
-the backend token endpoint. When run interactively, omitted hostnames and the
-cookie domain are prompted for. The default model path is ChatGPT/Codex sign-in
-from Settings; set
-`USEBRIAN_PREFERRED_PROVIDER=gemini GEMINI_API_KEY=...` before running the
-installer to start with Gemini instead.
-
-For a manual install:
+From this directory:
 
 ```bash
-cp .env.example .env
-# Set domains and replace every replace-* value.
-# Generate OWNER_PASSWORD_HASH with:
-# docker run --rm caddy:2-alpine caddy hash-password --plaintext 'choose-a-password'
-chmod 600 .env
-docker compose up -d --build
+# Replace with an available matching published release/SHA tag.
+BRIAN_IMAGE_TAG=sha-YOUR_RELEASE_REVISION bash ./install.sh oss
+bash ./stack.sh oss ps
 ```
 
-Open `https://$APP_DOMAIN` after `api` and `doc-sync` report healthy and the
-`caddy` container is running. Enter the owner credential when the browser first
-opens the session route. The first build clones and compiles the core
-application and can take several minutes.
+Open `http://localhost:3003`. The installer generates independent database,
+JWT, connector and encryption secrets in a mode-`0600` `.env`. It refuses to
+replace an existing `.env` or generate new keys over existing `use-brian`
+volumes. It stages configuration for secret-safe validation before publishing
+`.env`, then pulls and verifies images before touching running services.
+If pulling fails, `.env` remains for retry; do not delete it or rotate its keys.
 
-## Services
+For manual configuration, copy `.env.example` to `.env`, replace every
+`replace-*` value, pin the image tag, and `chmod 600 .env`. Database passwords
+must be URI-safe (hex recommended); encryption keys must be base64-encoded
+32-byte values. Single-quote values containing `$` to avoid interpolation.
+Run `bash ./stack.sh oss check`, then `bash ./stack.sh oss up`.
 
-| Service | Exposure | Purpose |
-|---|---|---|
-| `postgres` | Compose network only | PostgreSQL 18 with pgvector |
-| `migrate` | One-shot | Forward-only OSS schema migrations |
-| `grant-app-role` | One-shot | Grants the non-owner RLS role after migrations |
-| `api` | Caddy at `API_DOMAIN` | API and background workers |
-| `app-web` | Caddy at `APP_DOMAIN` | Product web app |
-| `doc-sync` | Caddy at `DOC_SYNC_DOMAIN` | Collaborative document WebSockets |
-| `browser-relay` | Caddy at `RELAY_DOMAIN` | Browser extension WebSocket relay |
-| `discord-connector` | Compose network only | Discord Gateway connector |
-| `wa-connector` | Compose network only | WhatsApp connector |
-| `wechat-connector` | Compose network only | WeChat connector |
-| `feishu-connector` | Compose network only | Feishu/Lark connector |
-| `caddy` | Host ports 80/443 | Automatic HTTPS and reverse proxy |
+| Service | Host Loopback Address |
+| --- | --- |
+| app-web | `127.0.0.1:3003` |
+| API | `127.0.0.1:4000` |
+| Doc sync | `127.0.0.1:8080` |
+| Browser relay | `127.0.0.1:8094` |
+| auth-web (Outpost only) | `127.0.0.1:3005` |
 
-## Operations
+PostgreSQL and connectors have no host ports. Raw host ports stay loopback-only
+in **both** modes. The default model path is ChatGPT/Codex sign-in from Settings;
+optional model and app OAuth credentials can be configured in `.env`.
+
+### Localhost My Browser Limitation
+
+**My Browser does not work with the default `PUBLIC_RELAY_URL=http://localhost:8094`.**
+Compose passes this value to the API as `BROWSER_RELAY_URL`. The current API uses
+that same setting for its HTTP relay transport and the advertised browser
+WebSocket URL; it has no separate internal/public relay settings. Inside the
+API container, `localhost:8094` points to the API container itself, not the
+host-published relay port. Changing it to `http://browser-relay:8080` would fix
+API reachability but advertise a Compose-only hostname the user's browser
+cannot reach.
+
+Standard local OSS installation remains supported; preflight intentionally
+allows this default and does not prove My Browser connectivity. To use My
+Browser, set `PUBLIC_RELAY_URL` to a relay HTTPS origin, such as
+`https://relay.example.com`, reachable by **both the API container and the
+user's browser**. Your external proxy must route HTTP and WebSocket traffic to
+the relay. The domain-based Outpost configuration below supports this path
+when DNS, TLS and routing work from both clients. This target does not use host
+networking or invent an unsupported internal/public URL split.
+
+### OSS Owner Security
+
+**Never publicly expose the OSS owner-session mint endpoints without external
+protection.** app-web's `/api/auth/local-session` and the API's
+`/auth/local-session` can mint the local owner's session. This target installs
+no gate for either endpoint. Anyone with access to them may become the owner.
+Loopback limits network access, not access by other local users/processes.
+
+If exposing OSS via your own HTTPS proxy, protect the app-web owner-session
+route and prevent unprotected direct access to the API mint route, including
+equivalent route variants. Protect all alternate ingress paths. Set direct
+`PUBLIC_*` HTTPS/WSS URLs and the shared cookie domain in `.env`; review your
+own proxy/auth policy before enabling public access. The scripts validate URL
+shape, not external protection. Local HTTP remains suitable only for localhost.
+
+## Outpost And External HTTPS
+
+Create `outpost.env` from `outpost.env.example`, `chmod 600 outpost.env`, and set
+real values. This overlay contains public URLs and provider settings, not a
+second copy of database or encryption keys. Example routing for your proxy:
+
+| Public Origin | Upstream On This Host |
+| --- | --- |
+| `https://app.example.com` | `http://127.0.0.1:3003` |
+| `https://api.example.com` | `http://127.0.0.1:4000` |
+| `wss://docs.example.com` | `http://127.0.0.1:8080` (WebSocket upgrade) |
+| `https://relay.example.com` | `http://127.0.0.1:8094` (support WebSockets) |
+| `https://auth.example.com` | `http://127.0.0.1:3005` |
+
+Use five distinct single-level sibling hosts and `COOKIE_DOMAIN=.example.com`.
+Provide certificates and DNS, preserve the public host, and forward WebSocket
+upgrades. The proxy must be able to reach host loopback; another container's
+`127.0.0.1` is not this host. A remote proxy needs a separately secured transport,
+not a change to wildcard public bindings. `TRUST_PROXY_HEADERS=false` is
+intentional; auth-web uses its explicit canonical `AUTH_PORTAL_URL`.
+
+Email login requires real bootstrap administrator mailbox addresses, SMTP
+host/port, user/password, and an approved sender. OIDC requires registration
+with a real issuer, client ID/secret, provider name and a persistent bridge
+secret of at least 32 characters. Register
+`https://auth.example.com/api/auth/oidc/callback` as the redirect URI. Enable at
+least one provider; email can be disabled for OIDC-only setups. Invite-only
+enrollment needs bootstrap emails; mapped enrollment must reference existing
+workspace IDs and requires review of the provider's claims/mapping policy.
+The empty example credentials deliberately fail preflight.
+
+For a new Outpost installation:
 
 ```bash
-docker compose ps
-docker compose logs -f api
-docker compose logs -f caddy
-docker compose restart api
+BRIAN_IMAGE_TAG=sha-YOUR_RELEASE_REVISION bash ./install.sh outpost
 ```
 
-To update, edit `BRIAN_REF` and `BRIAN_IMAGE_TAG` in `.env`. Pin both to a
-release tag for reproducibility. Rebuild the source image without the cached
-Git fetch, pull all upstream images, and recreate the services. Back up the
-volumes first, especially before a PostgreSQL image update:
+For an existing Compose installation, retain `.env`, pin its image tag, back up
+data, configure the external proxy/providers, then:
 
 ```bash
-docker compose build --pull --no-cache migrate
-docker compose pull postgres caddy doc-sync browser-relay discord-connector wa-connector wechat-connector feishu-connector
-docker compose up -d
+bash ./stack.sh outpost check
+bash ./update.sh outpost
 ```
 
-The `postgres-data`, `brian-data`, and `whatsapp-data` volumes are durable.
-Back them up together with `.env`; losing `.env` makes encrypted connector and
-browser credentials unrecoverable. Caddy certificate state lives in
-`caddy-data` and can be regenerated from DNS.
+Outpost auth disables the local-session flow. Do not copy OSS testing proxy
+rules or add a test Basic Auth gate. This is **not an automatic owner/data
+migration**. Treat identity/workspace migration as a separate, explicitly
+planned operation. Switching back with `bash ./update.sh oss` stops auth-web
+and restores OSS local-owner behavior; remove/protect public OSS ingress first.
 
-Removing containers does not remove data. `docker compose down -v` permanently
-deletes the database and application volumes and must only be used when the
-installation is intentionally being destroyed.
+## Operations And Updates
+
+Always pass the same mode to these scripts. OSS selects `.env` + `compose.yml`;
+Outpost selects `.env`, then `outpost.env`, plus `compose.yml`,
+`compose.outpost.yml`, and profile `outpost`. The edition is selected by the
+wrapper, not a persisted dotenv mode. Both force project `use-brian` and ignore
+ambient Compose file/profile/project selections. Ordinary exported application
+variables still take precedence over dotenv values per Compose rules; avoid
+stale shell overrides. Do not use bare `docker compose up` for updates or mode
+switches: it bypasses validation, image verification and writer-stop ordering.
+
+```bash
+bash ./stack.sh oss check       # Validate only, no pull or stack changes
+bash ./verify-images.sh oss     # Validate + inspect already-pulled images
+bash ./stack.sh oss ps
+bash ./stack.sh oss logs
+# Back up, then edit BRIAN_IMAGE_TAG in .env to the desired release/SHA tag.
+bash ./update.sh oss
+# Substitute outpost consistently for Outpost deployments.
+```
+
+`stack.sh MODE up` resumes a configured installation with the same safe sequence
+as `update.sh MODE`. Updates/resumes reject mutable `latest`, `main`, and
+`develop` tags. The example permits `latest` for a first install only; pin a
+release/SHA before retrying or updating. Tags other than these can also be
+retagged by publishers; use a trusted immutable release policy.
+
+The sequence is: validate configuration, pull selected images, verify matching
+source revisions, stop **all** application writers (including optional auth-web
+and old migration/grant jobs), wait for PostgreSQL, run migrations explicitly,
+run grants explicitly, then recreate and wait for the selected applications.
+`init-db.sh` creates the restricted app role on a new database;
+`grant-app-role.sql` applies grants after every migration. Completed old Compose
+jobs are not reused. Stop any writers outside this project yourself first.
+
+If migration or grants fail, applications remain stopped. Keep command output
+for diagnosis: migration/grant commands are one-shot `run --rm` containers, so
+their logs are not retained after removal. Do not restart old code against a
+partially advanced schema; investigate or restore the pre-update backup.
+Application readiness failure after successful migrations needs separate
+diagnosis and is not an automatic schema rollback.
+
+Back up all three volumes together with `.env` and `outpost.env` securely before
+updates. Losing encryption keys makes stored credentials unrecoverable. No
+script deletes volumes, resets the database, performs owner migration, or
+automatically rolls back forward-only migrations. PostgreSQL major upgrades
+require a separate planned database migration.
+
+### Older Compose Targets
+
+For a prior source-built target, map `BRIAN_REF` to a matching published release
+or SHA tag and set `BRIAN_IMAGE_TAG`; `BRIAN_REF` is no longer used. Preserve
+the original database/encryption secrets and volume names. Translate the old
+`*_DOMAIN` settings into direct `PUBLIC_*` URLs using these examples.
+
+The old Caddy service is no longer part of this manifest. Preflight refuses an
+active legacy `use-brian` Caddy container so it cannot silently remain as public
+orphan ingress. Identify it with
+`docker ps --filter label=com.docker.compose.project=use-brian --filter label=com.docker.compose.service=caddy`
+and deliberately stop that container after planning replacement ingress.
+No script deletes its old certificate volumes. Old owner Basic Auth settings
+are unused and are not a substitute for external OSS protection.
+
+## Offline Tests
+
+```bash
+bash -n common.sh install.sh stack.sh update.sh verify-images.sh init-db.sh
+uv run --no-project --with pyyaml python test-config.py
+```
+
+Tests use synthetic configuration and mocked Docker, never real secret files
+or a daemon. They check loopback defaults, shared mode/env/profile selection,
+auth/provider wiring, image selection, fail-closed preflight, staged install
+behavior, and update/migration/grant ordering. Live image availability,
+runtime-public-config support, portal cookie behavior, DNS/TLS, provider
+credentials, readiness and end-to-end login must be verified for your release.

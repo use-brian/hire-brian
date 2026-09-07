@@ -1,22 +1,23 @@
 name: use-brian
 
-x-platform-service: &platform-service
-  image: use-brian/platform:local
-  build:
-    context: .
-    dockerfile: Dockerfile
-    args:
-      BRIAN_REPO: ${BRIAN_REPO:-https://github.com/use-brian/use-brian.git}
-      BRIAN_REF: ${BRIAN_REF:-main}
-      NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
-      NEXT_PUBLIC_DOC_SYNC_URL: wss://${DOC_SYNC_DOMAIN}
-      NEXT_PUBLIC_USEBRIAN_EDITION: oss
-  restart: unless-stopped
-  init: true
-
 x-service-defaults: &service-defaults
   restart: unless-stopped
   init: true
+
+x-outpost-auth: &outpost-auth
+  AUTH_PORTAL_URL: ${AUTH_PORTAL_URL:-}
+  OUTPOST_AUTH_EMAIL_ENABLED: ${OUTPOST_AUTH_EMAIL_ENABLED:-true}
+  OUTPOST_AUTH_OIDC_ENABLED: ${OUTPOST_AUTH_OIDC_ENABLED:-false}
+  OUTPOST_OIDC_ISSUER_URL: ${OUTPOST_OIDC_ISSUER_URL:-}
+  OUTPOST_OIDC_CLIENT_ID: ${OUTPOST_OIDC_CLIENT_ID:-}
+  OUTPOST_OIDC_CLIENT_SECRET: ${OUTPOST_OIDC_CLIENT_SECRET:-}
+  OUTPOST_OIDC_PROVIDER_NAME: ${OUTPOST_OIDC_PROVIDER_NAME:-}
+  OUTPOST_OIDC_ALLOWED_ENDPOINT_ORIGINS: ${OUTPOST_OIDC_ALLOWED_ENDPOINT_ORIGINS:-}
+  OUTPOST_OIDC_EMAIL_VERIFICATION: ${OUTPOST_OIDC_EMAIL_VERIFICATION:-claim}
+  OUTPOST_OIDC_SUBJECT_IDENTITY_ENABLED: ${OUTPOST_OIDC_SUBJECT_IDENTITY_ENABLED:-false}
+  OUTPOST_OIDC_ENROLLMENT_MODE: ${OUTPOST_OIDC_ENROLLMENT_MODE:-invite_only}
+  OUTPOST_OIDC_WORKSPACE_MAPPINGS: ${OUTPOST_OIDC_WORKSPACE_MAPPINGS:-}
+  OUTPOST_AUTH_BRIDGE_SECRET: ${OUTPOST_AUTH_BRIDGE_SECRET:-}
 
 services:
   postgres:
@@ -37,8 +38,9 @@ services:
     restart: unless-stopped
 
   migrate:
-    <<: *platform-service
-    command: ["pnpm", "--filter", "@use-brian/api", "migrate"]
+    <<: *service-defaults
+    image: ghcr.io/use-brian/api:${BRIAN_IMAGE_TAG:-latest}
+    command: ["packages/api/node_modules/.bin/tsx", "packages/api/scripts/migrate.ts"]
     environment:
       DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
     depends_on:
@@ -62,27 +64,32 @@ services:
     restart: "no"
 
   api:
-    <<: *platform-service
-    command: ["node", "apps/api/dist/index.js"]
-    env_file: .env
+    <<: *service-defaults
+    image: ghcr.io/use-brian/api:${BRIAN_IMAGE_TAG:-latest}
+    env_file: ${BRIAN_ENV_FILE:-.env}
     environment:
+      <<: *outpost-auth
       NODE_ENV: production
       PORT: "4000"
       HOME: /data
-      USEBRIAN_EDITION: oss
+      USEBRIAN_EDITION: ${USEBRIAN_EDITION:-oss}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      OUTPOST_AUTH_BOOTSTRAP_EMAILS: ${OUTPOST_AUTH_BOOTSTRAP_EMAILS:-}
       DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
       DATABASE_URL_APP: postgresql://app_user:${APP_DATABASE_PASSWORD}@postgres:5432/brian
-      APP_URL: https://${APP_DOMAIN}
-      AUTHED_APP_URL: https://${APP_DOMAIN}
-      API_URL: https://${API_DOMAIN}
-      WEBHOOK_BASE_URL: https://${API_DOMAIN}
+      APP_URL: ${PUBLIC_APP_URL:-http://localhost:3003}
+      AUTHED_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3003}
+      API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+      WEBHOOK_BASE_URL: ${PUBLIC_API_URL:-http://localhost:4000}
       DOC_SYNC_URL: http://doc-sync:8080
-      BROWSER_RELAY_URL: https://${RELAY_DOMAIN}
+      BROWSER_RELAY_URL: ${PUBLIC_RELAY_URL:-http://localhost:8094}
       DISCORD_CONNECTOR_URL: http://discord-connector:8080
       WA_CONNECTOR_URL: http://wa-connector:8080
       WECHAT_CONNECTOR_URL: http://wechat-connector:8080
       FEISHU_CONNECTOR_URL: http://feishu-connector:8080
       LOCAL_FILES_DIR: /data/files
+    ports:
+      - "127.0.0.1:4000:4000"
     volumes:
       - brian-data:/data
     depends_on:
@@ -95,28 +102,76 @@ services:
       retries: 30
 
   app-web:
-    <<: *platform-service
-    command: ["pnpm", "--filter", "app-web", "start"]
-    env_file: .env
+    <<: *service-defaults
+    image: ghcr.io/use-brian/app-web:${BRIAN_IMAGE_TAG:-latest}
     environment:
       NODE_ENV: production
       PORT: "3003"
+      INTERNAL_API_URL: http://api:4000
       API_URL: http://api:4000
-      AUTHED_APP_URL: https://${APP_DOMAIN}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3003}
+      PUBLIC_PRIMARY_AUTH_URL: ${PUBLIC_PRIMARY_AUTH_URL:-}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+      PUBLIC_DISPLAY_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+      PUBLIC_DOC_SYNC_URL: ${PUBLIC_DOC_SYNC_URL:-ws://localhost:8080}
+      APP_URL: ${PUBLIC_APP_URL:-http://localhost:3003}
+      AUTHED_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3003}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      USEBRIAN_EDITION: ${USEBRIAN_EDITION:-oss}
+      APP_HOSTS: ${APP_HOSTS:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      PUBLIC_GOOGLE_API_KEY: ${PUBLIC_GOOGLE_API_KEY:-}
+      GOOGLE_PROJECT_NUMBER: ${GOOGLE_PROJECT_NUMBER:-}
+      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
+      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}
+      FATHOM_CLIENT_ID: ${FATHOM_CLIENT_ID:-}
+      FATHOM_CLIENT_SECRET: ${FATHOM_CLIENT_SECRET:-}
+      SHOPIFY_CLIENT_ID: ${SHOPIFY_CLIENT_ID:-}
+      SHOPIFY_CLIENT_SECRET: ${SHOPIFY_CLIENT_SECRET:-}
+    ports:
+      - "127.0.0.1:3003:3003"
     depends_on:
       api:
         condition: service_healthy
 
+  auth-web:
+    <<: *service-defaults
+    profiles: ["outpost"]
+    image: ghcr.io/use-brian/auth-web:${BRIAN_IMAGE_TAG:-latest}
+    environment:
+      <<: *outpost-auth
+      NODE_ENV: production
+      PORT: "3005"
+      INTERNAL_API_URL: http://api:4000
+      AUTHED_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3003}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      TRUST_PROXY_HEADERS: "false"
+    ports:
+      - "127.0.0.1:3005:3005"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3005/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 20
+
   doc-sync:
     <<: *service-defaults
     image: ghcr.io/use-brian/doc-sync:${BRIAN_IMAGE_TAG:-latest}
-    env_file: .env
     environment:
       NODE_ENV: production
       PORT: "8080"
       DATABASE_URL: postgresql://brian:${POSTGRES_PASSWORD}@postgres:5432/brian
       DATABASE_URL_APP: postgresql://app_user:${APP_DATABASE_PASSWORD}@postgres:5432/brian
+      JWT_SECRET: ${JWT_SECRET}
+      DOC_SYNC_SECRET: ${DOC_SYNC_SECRET}
       API_INTERNAL_URL: http://api:4000
+    ports:
+      - "127.0.0.1:8080:8080"
     depends_on:
       api:
         condition: service_healthy
@@ -135,9 +190,16 @@ services:
       PORT: "8080"
       JWT_SECRET: ${JWT_SECRET}
       BROWSER_RELAY_SECRET: ${BROWSER_RELAY_SECRET}
+    ports:
+      - "127.0.0.1:8094:8080"
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   discord-connector:
     <<: *service-defaults
@@ -191,37 +253,7 @@ services:
       api:
         condition: service_healthy
 
-  caddy:
-    image: caddy:2-alpine
-    environment:
-      APP_DOMAIN: ${APP_DOMAIN}
-      API_DOMAIN: ${API_DOMAIN}
-      DOC_SYNC_DOMAIN: ${DOC_SYNC_DOMAIN}
-      RELAY_DOMAIN: ${RELAY_DOMAIN}
-      OWNER_USERNAME: ${OWNER_USERNAME}
-      OWNER_PASSWORD_HASH: ${OWNER_PASSWORD_HASH}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      api:
-        condition: service_healthy
-      app-web:
-        condition: service_started
-      doc-sync:
-        condition: service_healthy
-      browser-relay:
-        condition: service_started
-    restart: unless-stopped
-
 volumes:
   postgres-data:
   brian-data:
   whatsapp-data:
-  caddy-data:
-  caddy-config:
