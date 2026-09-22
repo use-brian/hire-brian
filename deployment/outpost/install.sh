@@ -220,6 +220,7 @@ chmod 0600 /etc/use-brian-outpost/deploy.conf
 
 install -d -m 0755 /usr/local/lib/use-brian-outpost
 install -m 0755 "$HERE/../connector-admin.sh" /usr/local/lib/use-brian-outpost/connector-admin
+install -m 0755 "$HERE/../native-build.sh" /usr/local/lib/use-brian-outpost/native-build
 install -m 0755 "$HERE/bin/outpost-grant-role" /usr/local/lib/use-brian-outpost/grant-role
 install -m 0755 "$HERE/bin/wait-for-api" /usr/local/lib/use-brian-outpost/wait-for-api
 if is_yes "$INSTALL_BROWSER"; then

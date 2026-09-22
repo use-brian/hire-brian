@@ -29,11 +29,15 @@ if [ "$action" = status ]; then
 fi
 
 [ "$action" = enable ] || [ "$action" = disable ] || { echo "Usage: outpost-connectors status|enable|disable <connector>" >&2; exit 1; }
+exec 9>/run/lock/use-brian-outpost-update.lock
+flock -n 9 || { echo "Another Outpost update or connector change is running." >&2; exit 1; }
+. "$config"
 connector=${2:-}
 variable=$(connector_variable "$connector")
 describe_connector "$connector"
 
 if [ "$action" = enable ]; then
+  build_connector "$connector" /var/lib/use-brian-outpost /usr/local/lib/use-brian-outpost/native-build
   secret=$(new_connector_secret)
   upsert_env_value "$api_env" "$URL_KEY" "$URL"
   upsert_env_value "$api_env" "$SECRET_KEY" "$secret"
