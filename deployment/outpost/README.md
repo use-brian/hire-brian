@@ -12,14 +12,11 @@ Required source-tree markers include:
 - `apps/auth-web/package.json`
 - `apps/app-web/package.json`
 - `apps/doc-sync/package.json`
-- `apps/discord-connector/package.json`
-- `apps/wa-connector/package.json`
 - `apps/browser-relay/package.json`
-- `apps/browser-extension/package.json`
-- `apps/wechat-connector/package.json`
-- `apps/feishu-connector/package.json`
 - `packages/api/migrations/`
 - Root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and `turbo.json`
+
+Enabled connectors and the optional Chromium desktop additionally require their respective workspace packages. Keep the complete source tree and lockfile; deployment filters select what to install and build.
 
 ## Install
 
@@ -46,6 +43,8 @@ The installer asks for:
 - The SSH port UFW must preserve.
 
 It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt. Release builds run serially to limit peak memory use; provision at least 8 GB RAM as documented by the Terraform configurations, and add swap before installation on memory-constrained hosts.
+
+Only deployed services, enabled connectors, and their workspace dependencies are built. Dependency installation is filtered to those packages plus migration tooling (pnpm still installs root tooling). The Chromium extension is built only for the opt-in local browser desktop. Firefox, its companion/extension, and Electron desktop apps are not deployment targets; automatic browser/Electron downloads during dependency installation are suppressed. Firefox is not currently supported.
 
 Important defaults are `BRIAN_USER=brian`, `OUTPOST_SOURCE_MODE=repository`, `INSTALL_POSTGRES=yes`, `INSTALL_LIBREOFFICE=yes`, `INSTALL_BROWSER=no`, all four `ENABLE_*` connector values `yes`, and `REVERSE_PROXY_SETUP=default`. For noninteractive installation set `NONINTERACTIVE=1` and pass variables from `outpost.env.example` through `sudo env`; the installer does not read that file automatically.
 
@@ -113,6 +112,8 @@ sudo journalctl -u use-brian-outpost-api -f
 
 `outpost-update [argument]` interprets its argument by persisted source mode: branch/tag/commit for repository mode or an absolute directory for directory mode. With no argument it uses persisted `BRIAN_REF` or `OUTPOST_SOURCE_DIR`. Overrides apply to one run and do not modify `deploy.conf`.
 
-Use `outpost-connectors status`, `outpost-connectors enable <connector>`, or `outpost-connectors disable <connector>`. Supported connector names are `discord`, `whatsapp`, `wechat`, and `feishu`.
+Use `outpost-connectors status`, `outpost-connectors enable <connector>`, or `outpost-connectors disable <connector>`. Supported connector names are `discord`, `whatsapp`, `wechat`, and `feishu`. Enabling first installs/builds that connector in the current release, then changes configuration and starts it; a build failure leaves configuration unchanged. Connector changes and updates share a lock.
+
+When upgrading deployment scripts on an existing host, also copy `deployment/native-build.sh` to `/usr/local/lib/use-brian-outpost/native-build` and `deployment/connector-admin.sh` to `/usr/local/lib/use-brian-outpost/connector-admin` (root-owned, mode `0755`), alongside the updated `outpost-update` and `outpost-connectors` commands. Updating application source alone does not update these installed helpers.
 
 Back up PostgreSQL and `/var/lib/use-brian-outpost/files` before updates. Default proxy mode publishes only Caddy on 80/443; application listeners remain protected by UFW. Custom mode requires operator-managed TLS/WebSocket ingress.

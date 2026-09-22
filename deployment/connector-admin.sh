@@ -46,6 +46,22 @@ connector_variable() {
   esac
 }
 
+# Build before changing configuration: disabled connectors are not prebuilt.
+build_connector() {
+  local connector=$1 data=$2 helper=$3 package
+  case "$connector" in
+    discord|wechat|feishu) package="@use-brian/$connector-connector" ;;
+    whatsapp) package=@use-brian/wa-connector ;;
+    *) return 1 ;;
+  esac
+  runuser -u "$BRIAN_USER" -- env HOME="$data" bash -c '
+    set -euo pipefail
+    . "$2"
+    build_filters=("--filter=$3")
+    build_native_release "$1"
+  ' _ "$data/platform" "$helper" "$package"
+}
+
 new_connector_secret() {
   openssl rand -base64 36 | tr -d '\n'
 }

@@ -54,7 +54,9 @@ When `INSTALL_POSTGRES=no`, set TLS-enforcing `DATABASE_URL` and `DATABASE_URL_A
 
 `MODEL_PROVIDER` defaults to `gemini`. Gemini uses `GEMINI_API_KEY`; DashScope uses `DASHSCOPE_API_KEY` and optional `DASHSCOPE_BASE_URL`; Vertex uses `VERTEX_PROJECT_ID`, `VERTEX_LOCATION` (default `asia-east2`), and optional compact `VERTEX_SERVICE_ACCOUNT_JSON`; OpenAI Codex stores the preference without an API key and is authorized through the deployed Brian provider flow.
 
-Discord, WhatsApp, WeChat, and Feishu are independently optional. A disabled connector is not configured in the API, enabled in systemd, restarted during updates, or checked by `brian-doctor`.
+Discord, WhatsApp, WeChat, and Feishu are independently optional. A disabled connector is not built, configured in the API, enabled in systemd, restarted during updates, or checked by `brian-doctor`.
+
+Release builds run serially and target only deployed services, enabled connectors, and their workspace dependencies. Dependency installation is filtered to those packages plus migration tooling (pnpm still installs root tooling). Keep the complete source tree and lockfile. The Chromium extension is built only for the opt-in local browser desktop. Firefox, its companion/extension, and Electron desktop apps are not deployment targets; automatic browser/Electron downloads during dependency installation are suppressed. Firefox is not currently supported.
 
 `REVERSE_PROXY_SETUP` defaults to `default`: it installs Caddy, requires distinct app/API/doc-sync hostnames, enables automatic TLS/WebSockets, and opens host UFW ports 80/443. `custom` leaves ingress unchanged. DNS and cloud firewall rules remain operator responsibilities.
 
@@ -82,7 +84,9 @@ sudo journalctl -u brian-api -f
 
 `brian-update [git-ref]` uses persisted `BRIAN_REF` when omitted. A branch, tag, or commit argument overrides it for that run only. It does not rewrite `/etc/brian/deploy.conf`.
 
-Use `brian-connectors status`, `brian-connectors enable <connector>`, or `brian-connectors disable <connector>`.
+Use `brian-connectors status`, `brian-connectors enable <connector>`, or `brian-connectors disable <connector>`. Enabling first installs/builds that connector in the current release, then changes configuration and starts it; a build failure leaves configuration unchanged. Connector changes and updates share a lock.
+
+When upgrading deployment scripts on an existing host, also copy `deployment/native-build.sh` to `/usr/local/lib/brian/native-build` and `deployment/connector-admin.sh` to `/usr/local/lib/brian/connector-admin` (root-owned, mode `0755`), alongside the updated `brian-update` and `brian-connectors` commands. Updating application source alone does not update these installed helpers.
 
 ## Browser desktop
 

@@ -47,14 +47,17 @@ esac
 chown -R "$BRIAN_USER:$BRIAN_GROUP" "$release"
 for marker in package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json apps/api/package.json \
   apps/auth-web/package.json apps/app-web/package.json apps/doc-sync/package.json \
-  apps/discord-connector/package.json apps/wa-connector/package.json \
-  apps/browser-relay/package.json apps/wechat-connector/package.json \
-  apps/browser-extension/package.json apps/feishu-connector/package.json packages/api/migrations; do
+  apps/browser-relay/package.json packages/api/migrations; do
   [ -e "$release/$marker" ] || { echo "Outpost source is missing $marker." >&2; exit 1; }
 done
 
 echo ">> Installing and building native release"
+INSTALL_BROWSER=no
+if [ -e /etc/use-brian-outpost/browser-desktop ]; then INSTALL_BROWSER=yes; fi
 runuser -u "$BRIAN_USER" -- env HOME="$data" \
+  INSTALL_BROWSER="$INSTALL_BROWSER" \
+  ENABLE_DISCORD="$ENABLE_DISCORD" ENABLE_WHATSAPP="$ENABLE_WHATSAPP" \
+  ENABLE_WECHAT="$ENABLE_WECHAT" ENABLE_FEISHU="$ENABLE_FEISHU" \
   NEXT_PUBLIC_USEBRIAN_EDITION=outpost \
   NEXT_PUBLIC_PRIMARY_AUTH_URL="$AUTH_PORTAL_URL" \
   NEXT_PUBLIC_APP_URL="$AUTH_PORTAL_URL" \
@@ -63,19 +66,9 @@ runuser -u "$BRIAN_USER" -- env HOME="$data" \
   NEXT_PUBLIC_DOC_SYNC_URL="$DOC_SYNC_PUBLIC_URL" \
   bash -c '
     set -euo pipefail
-    cd "$1"
-    corepack pnpm install --frozen-lockfile --prod=false
-    NODE_ENV=production corepack pnpm turbo run build --concurrency=1 \
-      --filter=@use-brian/api-open \
-      --filter=@use-brian/auth-web \
-      --filter=app-web \
-      --filter=@use-brian/doc-sync \
-      --filter=@use-brian/discord-connector \
-      --filter=@use-brian/wa-connector \
-      --filter=@use-brian/browser-relay \
-      --filter=@use-brian/browser-extension \
-      --filter=@use-brian/wechat-connector \
-      --filter=@use-brian/feishu-connector
+    . /usr/local/lib/use-brian-outpost/native-build
+    native_build_filters outpost
+    build_native_release "$1"
   ' _ "$release"
 
 echo ">> Stopping application writers"
