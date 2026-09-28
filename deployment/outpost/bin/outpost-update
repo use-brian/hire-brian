@@ -110,7 +110,20 @@ fi
 systemctl restart "${units[@]:1}"
 
 for _ in $(seq 1 60); do
-  if outpost-doctor; then echo ">> Release healthy: $release"; exit 0; fi
+  if outpost-doctor; then
+    echo ">> Release healthy: $release"
+    # Keep rollback code until health checks pass. Only remove a direct child
+    # of the managed releases directory, never the active release or other data.
+    if [ -n "$previous" ] && [ -d "$previous" ] &&
+       [ "$(dirname -- "$previous")" = "$(readlink -f "$releases")" ] &&
+       [ "$previous" != "$(readlink -f "$platform")" ]; then
+      echo ">> Removing previous release: $previous"
+      if ! rm -rf -- "$previous"; then
+        echo "Warning: healthy release is active, but previous release cleanup failed: $previous" >&2
+      fi
+    fi
+    exit 0
+  fi
   sleep 2
 done
 
