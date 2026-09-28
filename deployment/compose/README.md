@@ -24,6 +24,8 @@ Registry (GHCR). Once a release is published, select its tag with
 - Outpost requires the primary auth redirect fix `ac41f62b` in the selected release so app-web redirects to the configured `PUBLIC_PRIMARY_AUTH_URL`.
 - The selected Outpost release must include the auth portal cookie-domain fix accepting a portal such as `auth.example.com` with `COOKIE_DOMAIN=.example.com`. Configuration cannot fix an older release that rejects that combination. No second-level subdomains are needed.
 
+- Outpost logout requires both API `POST /auth/logout` and auth-web's server-side session revocation in the selected release. Cookie-only logout in older portals can leave refresh credentials usable. Deploy matching API/auth-web images together; do not work around this by changing the cookie domain. See [logout verification and legacy-session behavior](../outpost/README.md#logoutsession-fix).
+
 The verifier checks every selected application image's OCI source-revision
 label, including auth-web in Outpost mode. Matching labels do not prove runtime
 feature support, image authenticity, working SMTP/OIDC credentials, or DNS/TLS.

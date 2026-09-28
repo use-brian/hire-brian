@@ -116,4 +116,10 @@ Use `outpost-connectors status`, `outpost-connectors enable <connector>`, or `ou
 
 When upgrading deployment scripts on an existing host, also copy `deployment/native-build.sh` to `/usr/local/lib/use-brian-outpost/native-build` and `deployment/connector-admin.sh` to `/usr/local/lib/use-brian-outpost/connector-admin` (root-owned, mode `0755`), alongside the updated `outpost-update` and `outpost-connectors` commands. Updating application source alone does not update these installed helpers.
 
+### Logout/session fix
+
+Use an application revision containing both the API `POST /auth/logout` endpoint and auth-web's server-side logout revocation. Earlier auth-web releases only cleared cookies, so retained refresh credentials could restore a session when app-web's best-effort revocation failed. This is an application fix, not a `COOKIE_DOMAIN` or Caddy setting; update API and auth-web together with `outpost-update FIXED_REF` (or the fixed source directory). The default persisted ref is `main`, so updating without a ref does not automatically select `develop` fixes.
+
+After updating, sign in, choose Log out, confirm on the auth portal, and reload the app. Authentication must be required again. A retained pre-logout refresh token must receive 401 from the API's `/auth/refresh`; do not log tokens. Backend unavailability should show a retryable logout error, not apparent success. For custom ingress, preserve all separate `Set-Cookie` headers. Legacy sessions without a session ID are invalidated account-wide; normal tracked sessions only sign out the selected device session. External OIDC provider SSO is not terminated.
+
 Back up PostgreSQL and `/var/lib/use-brian-outpost/files` before updates. Default proxy mode publishes only Caddy on 80/443; application listeners remain protected by UFW. Custom mode requires operator-managed TLS/WebSocket ingress.
