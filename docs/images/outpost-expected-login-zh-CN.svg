@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0.7" y2="0.2">
+      <stop offset="0" stop-color="#172c3c"/>
+      <stop offset="0.46" stop-color="#0b151e"/>
+      <stop offset="1" stop-color="#080f16"/>
+    </linearGradient>
+    <filter id="card-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="25" flood-color="#02070b" flood-opacity="0.35"/>
+    </filter>
+    <style>
+      .brand{font:700 14px sans-serif;letter-spacing:1.5px;fill:#7dd3e5}
+      .heading{font:400 28px sans-serif;fill:#f2f5f7}
+      .body{font:16px sans-serif;fill:#aeb9c4}
+      .label{font:700 14px sans-serif;fill:#f2f5f7}
+      .placeholder{font:600 13px sans-serif;fill:#7e8995}
+      .button{font:700 16px sans-serif;fill:#07131b}
+      .lang{font:15px sans-serif;fill:#aeb9c4}
+    </style>
+  </defs>
+
+  <rect width="1200" height="675" fill="url(#background)"/>
+  <rect x="419" y="95" width="362" height="481" rx="22" fill="#111d27" stroke="#2b3d49" stroke-width="1.2" filter="url(#card-shadow)"/>
+
+  <text x="448" y="143" class="brand">USE BRIAN</text>
+  <text x="448" y="181" class="heading">Sign in to your workspace</text>
+  <text x="448" y="211" class="body">Use your work email. We will send a secure</text>
+  <text x="448" y="235" class="body">sign-in link and a six-digit code.</text>
+
+  <text x="448" y="275" class="label">Email address</text>
+  <rect x="448" y="287" width="304" height="44" rx="11" fill="#08121a" stroke="#30424e" stroke-width="1.2"/>
+  <text x="461" y="314" class="placeholder">you@company.com</text>
+
+  <rect x="448" y="345" width="304" height="46" rx="10" fill="#78d0e2"/>
+  <text x="544" y="374" class="button">Send sign-in link</text>
+
+  <circle cx="558" cy="430" r="18" fill="none" stroke="#30424e" stroke-width="1.1"/>
+  <circle cx="600" cy="430" r="18" fill="none" stroke="#30424e" stroke-width="1.1"/>
+  <circle cx="642" cy="430" r="18" fill="none" stroke="#30424e" stroke-width="1.1"/>
+  <text x="548" y="436" class="lang">EN</text>
+  <text x="591" y="436" class="lang">JA</text>
+  <text x="632" y="436" class="lang">ZH</text>
+
+  <text x="600" y="632" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#71818e">预期的私有云 auth-web 登录页面</text>
+</svg>

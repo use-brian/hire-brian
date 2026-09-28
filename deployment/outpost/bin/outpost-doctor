@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
 set -u
 
+cleanup=no
+case "${1:-}" in
+  '') [ "$#" -eq 0 ] || { echo "Unexpected empty argument." >&2; exit 2; } ;;
+  --cleanup-old-releases) cleanup=yes ;;
+  --help|-h)
+    echo "Usage: outpost-doctor [--cleanup-old-releases]"
+    echo "After successful health checks, optionally delete all inactive managed releases (requires root)."
+    exit 0 ;;
+  *) echo "Usage: outpost-doctor [--cleanup-old-releases]" >&2; exit 2 ;;
+esac
+[ "$#" -le 1 ] || { echo "Too many arguments." >&2; exit 2; }
+
+if [ "$cleanup" = yes ]; then
+  [ "$(id -u)" -eq 0 ] || { echo "Release cleanup requires root." >&2; exit 1; }
+  # Hold the update/connector lock through health checks and deletion.
+  exec 9>/run/lock/use-brian-outpost-update.lock
+  flock -n 9 || { echo "An Outpost update or connector change is running." >&2; exit 1; }
+fi
+
 failed=0
 . /etc/use-brian-outpost/deploy.conf
 units=(api auth app doc-sync browser-relay)
@@ -38,4 +57,22 @@ if [ "$ENABLE_WHATSAPP" = yes ]; then check_url whatsapp http://127.0.0.1:8091/h
 check_url browser-relay http://127.0.0.1:8092/health
 if [ "$ENABLE_WECHAT" = yes ]; then check_url wechat http://127.0.0.1:8093/health; fi
 if [ "$ENABLE_FEISHU" = yes ]; then check_url feishu http://127.0.0.1:8095/health; fi
+if [ "$cleanup" = yes ] && [ "$failed" -eq 0 ]; then
+  releases=$(readlink -f /var/lib/use-brian-outpost/releases)
+  active=$(readlink -f /var/lib/use-brian-outpost/platform)
+  if [ -z "$releases" ] || [ -z "$active" ] || [ ! -d "$active" ] ||
+     [ "$(dirname -- "$active")" != "$releases" ]; then
+    echo "Cannot identify an active managed release; refusing cleanup." >&2
+    exit 1
+  fi
+  for old in "$releases"/*; do
+    [ -d "$old" ] && [ ! -L "$old" ] || continue
+    [ "$old" != "$active" ] || continue
+    echo ">> Removing inactive release: $old"
+    if ! rm -rf -- "$old"; then
+      echo "Failed to remove inactive release: $old" >&2
+      failed=1
+    fi
+  done
+fi
 exit "$failed"

@@ -110,7 +110,9 @@ sudo systemctl status 'use-brian-outpost-*'
 sudo journalctl -u use-brian-outpost-api -f
 ```
 
-`outpost-update [argument]` interprets its argument by persisted source mode: branch/tag/commit for repository mode or an absolute directory for directory mode. With no argument it uses persisted `BRIAN_REF` or `OUTPOST_SOURCE_DIR`. Overrides apply to one run and do not modify `deploy.conf`.
+`outpost-update [argument]` interprets its argument by persisted source mode: branch/tag/commit for repository mode or an absolute directory for directory mode. With no argument it uses persisted `BRIAN_REF` or `OUTPOST_SOURCE_DIR`. Overrides apply to one run and do not modify `deploy.conf`. After the new release passes health checks, the previous release directory is deleted from `/var/lib/use-brian-outpost/releases`. Until then, it is retained for automatic code rollback; migrations are not rolled back. Paths outside the managed releases directory are never cleaned up.
+
+Running `outpost-doctor` alone only checks health. Use `sudo outpost-doctor --cleanup-old-releases` to delete all inactive directories under `/var/lib/use-brian-outpost/releases` after all health checks pass, including leftover failed releases. It preserves the active release, skips symlinks, and refuses cleanup during an update or connector change. This permanently removes those releases as rollback options. Install the updated `deployment/outpost/bin/outpost-doctor` at `/usr/local/bin/outpost-doctor` to enable this flag on existing hosts.
 
 Use `outpost-connectors status`, `outpost-connectors enable <connector>`, or `outpost-connectors disable <connector>`. Supported connector names are `discord`, `whatsapp`, `wechat`, and `feishu`. Enabling first installs/builds that connector in the current release, then changes configuration and starts it; a build failure leaves configuration unchanged. Connector changes and updates share a lock.
 

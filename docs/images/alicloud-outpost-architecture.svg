@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071426"/>
+      <stop offset="1" stop-color="#102f45"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-opacity="0.25"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#72d4ff"/>
+    </marker>
+    <style>
+      .title{font:700 34px sans-serif;fill:#fff}.subtitle{font:16px sans-serif;fill:#a9c8d8}
+      .box{fill:#f7fbfd;stroke:#86b8ca;stroke-width:2;rx:18;filter:url(#shadow)}
+      .head{font:700 22px sans-serif;fill:#12354a}.body{font:16px sans-serif;fill:#31566a}
+      .small{font:14px sans-serif;fill:#527184}.line{stroke:#72d4ff;stroke-width:4;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <text x="60" y="62" class="title">Use Brian Outpost on Alibaba Cloud</text>
+  <text x="60" y="92" class="subtitle">Public HTTPS/WSS terminates at Caddy; firewalls keep application ports private</text>
+
+  <rect x="55" y="165" width="220" height="175" class="box"/>
+  <text x="85" y="207" class="head">Users and DNS</text>
+  <text x="85" y="244" class="body" style="font-size:14px">app.outpost.example.com</text>
+  <text x="85" y="272" class="body">api / auth / docs</text>
+  <text x="85" y="310" class="small">DNS only, public TLS</text>
+
+  <rect x="390" y="125" width="420" height="300" class="box"/>
+  <text x="425" y="168" class="head" style="font-size:20px">Alibaba Cloud ECS / Debian 12</text>
+  <text x="425" y="207" class="body">Caddy / TCP 80 and 443</text>
+  <rect x="425" y="235" width="160" height="65" rx="10" fill="#dff5ff"/>
+  <text x="447" y="274" class="body">app / auth</text>
+  <rect x="610" y="235" width="160" height="65" rx="10" fill="#dff5ff"/>
+  <text x="635" y="274" class="body">API / workers</text>
+  <rect x="425" y="320" width="160" height="65" rx="10" fill="#e4f8ef"/>
+  <text x="451" y="359" class="body">doc-sync</text>
+  <rect x="610" y="320" width="160" height="65" rx="10" fill="#fff0dc"/>
+  <text x="632" y="359" class="body">connectors</text>
+
+  <rect x="920" y="125" width="225" height="145" class="box"/>
+  <text x="950" y="168" class="head">PolarDB</text>
+  <text x="950" y="204" class="body">PostgreSQL 18</text>
+  <text x="950" y="233" class="small">vector + pg_trgm gate</text>
+
+  <rect x="920" y="315" width="225" height="120" class="box"/>
+  <text x="950" y="358" class="head">DashScope</text>
+  <text x="950" y="395" class="body">Regional model API</text>
+
+  <rect x="390" y="505" width="420" height="125" class="box"/>
+  <text x="425" y="550" class="head">Alibaba SMTP</text>
+  <text x="425" y="588" class="body">Sign-in links, codes, invitations</text>
+
+  <path d="M275 250 H385" class="line"/>
+  <path d="M810 205 H912" class="line"/>
+  <path d="M810 360 H912" class="line"/>
+  <path d="M600 425 V495" class="line"/>
+
+  <text x="845" y="185" class="small" style="fill:#bdeaff">Private VPC + allowlist</text>
+  <text x="620" y="475" class="small" style="fill:#bdeaff">SMTP TLS</text>
+  <text x="55" y="670" class="subtitle">Security group: restricted SSH; public 80/443; database and application ports remain private</text>
+</svg>
