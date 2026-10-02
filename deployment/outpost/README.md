@@ -42,7 +42,7 @@ The installer asks for:
 - Independent enable/disable choices for Discord, WhatsApp, WeChat, and Feishu connectors.
 - The SSH port UFW must preserve.
 
-It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt. Release builds run serially to limit peak memory use; provision at least 8 GB RAM as documented by the Terraform configurations, and add swap before installation on memory-constrained hosts.
+It installs Node.js 22, pnpm 10.33.0, build tools, ffmpeg, PostgreSQL client tools, fonts, and optional PostgreSQL/LibreOffice packages through apt. Release builds run serially to limit peak memory use; provision at least 8 GB RAM as documented by the Terraform configurations, and add swap before installation on memory-constrained hosts. The build raises the Node heap to 4096 MiB (`NODE_OPTIONS=--max-old-space-size=4096`, build step only) because a clean API TypeScript compile exceeds Node's default ~2 GiB heap; swap alone does not raise that limit.
 
 Only deployed services, enabled connectors, and their workspace dependencies are built. Dependency installation is filtered to those packages plus migration tooling (pnpm still installs root tooling). The Chromium extension is built only for the opt-in local browser desktop. Firefox, its companion/extension, and Electron desktop apps are not deployment targets; automatic browser/Electron downloads during dependency installation are suppressed. Firefox is not currently supported.
 

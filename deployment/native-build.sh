@@ -50,5 +50,9 @@ build_native_release() (
     PUPPETEER_SKIP_DOWNLOAD=true \
     ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
     corepack pnpm "${install_filters[@]}" install --frozen-lockfile --prod=false || return $?
-  NODE_ENV=production corepack pnpm turbo run build --concurrency=1 "${build_filters[@]}" || return $?
+  # A clean @use-brian/api TypeScript compile exceeds Node's default heap
+  # (~2 GiB below 16 GB RAM, regardless of swap); the hosted Docker build
+  # stage uses the same 4096 MiB cap. Build-only: never set for services.
+  NODE_ENV=production NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=4096" \
+    corepack pnpm turbo run build --concurrency=1 "${build_filters[@]}" || return $?
 )

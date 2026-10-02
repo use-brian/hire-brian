@@ -39,7 +39,8 @@ keys = ["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "PUPPETEER_SKIP_DOWNLOAD",
         "ELECTRON_SKIP_BINARY_DOWNLOAD", "NODE_ENV"]
 with open(os.environ["CALL_LOG"], "a") as log:
     log.write(json.dumps({"args": sys.argv[1:], "cwd": os.getcwd(),
-                         "env": {k: os.environ.get(k) for k in keys}}) + "\\n")
+                         "env": {k: os.environ.get(k) for k in keys},
+                         "node_options": os.environ.get("NODE_OPTIONS")}) + "\\n")
 phase = "INSTALL" if "install" in sys.argv else "BUILD"
 sys.exit(int(os.environ.get("FAIL_" + phase, "0")))
 ''')
@@ -47,7 +48,7 @@ sys.exit(int(os.environ.get("FAIL_" + phase, "0")))
 
     def run_helper(self, script, extra=None):
         env = dict(os.environ)
-        for key in [*CONNECTORS, *SKIPS, "INSTALL_BROWSER", "NODE_ENV", "FAIL_INSTALL", "FAIL_BUILD"]:
+        for key in [*CONNECTORS, *SKIPS, "INSTALL_BROWSER", "NODE_ENV", "NODE_OPTIONS", "FAIL_INSTALL", "FAIL_BUILD"]:
             env.pop(key, None)
         env.update(PATH=f"{self.root}:{env['PATH']}", CALL_LOG=str(self.log))
         env.update(extra or {})
@@ -120,6 +121,19 @@ sys.exit(int(os.environ.get("FAIL_" + phase, "0")))
         self.assertEqual([c["args"] for c in calls], self.expected_args(["app-web"]))
         self.assertEqual(calls[0]["env"], dict(SKIPS, NODE_ENV="development"))
         self.assertEqual(calls[1]["env"], dict.fromkeys(SKIPS, "original") | {"NODE_ENV": "production"})
+
+    def test_build_raises_heap_without_leaking_or_dropping_caller_options(self):
+        for caller, expected in ((None, "--max-old-space-size=4096"),
+                                 ("--enable-source-maps", "--enable-source-maps --max-old-space-size=4096")):
+            extra = {"EXPECT_AFTER": caller or "unset"} | ({"NODE_OPTIONS": caller} if caller else {})
+            result, calls = self.run_helper('''
+                build_filters=(--filter=app-web)
+                build_native_release "$2"
+                [[ "${NODE_OPTIONS-unset}" = "$EXPECT_AFTER" ]]
+            ''', extra)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(calls[0]["node_options"], caller)
+            self.assertEqual(calls[1]["node_options"], expected)
 
     def test_failures_propagate_even_in_conditional_context(self):
         for phase, status, count in (("INSTALL", 37, 1), ("BUILD", 42, 2)):
